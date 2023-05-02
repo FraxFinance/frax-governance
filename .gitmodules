@@ -1,0 +1,15 @@
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+	branch = 1a60b06
+[submodule "lib/safe-contracts"]
+	path = lib/safe-contracts
+	url = https://github.com/safe-global/safe-contracts
+	branch = v1.3.0
+[submodule "lib/safe-tools"]
+	path = lib/safe-tools
+	url = https://github.com/colinnielsen/safe-tools
+	branch = 75b8b74dd74f3f6e0817006b20a0269e1ab046af
+[submodule "lib/frax-standard-solidity"]
+	path = lib/frax-standard-solidity
+	url = https://github.com/FraxFinance/frax-standard-solidity

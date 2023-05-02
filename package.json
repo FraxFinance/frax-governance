@@ -1,0 +1,25 @@
+{
+  "name": "frax-governance-dev",
+  "version": "1.0.0",
+  "description": "To run tests you need to create a virtual env and install vyper 0.2.12. This is because we're using VyperDeployer, which will deploy the actual veFXS.vy contract.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky install",
+    "format": "forge fmt src && prettier --config ./.prettierrc.json --write src && forge fmt test && prettier --config ./.prettierrc.json --write test"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "husky": "^8.0.3",
+    "lint-staged": "^13.2.1",
+    "prettier": "^2.8.7",
+    "prettier-plugin-solidity": "^1.1.3",
+    "solhint": "^3.4.1",
+    "solhint-plugin-prettier": "^0.0.5"
+  }
+}
