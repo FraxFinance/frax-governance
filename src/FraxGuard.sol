@@ -35,9 +35,9 @@ contract FraxGuard is IERC165, Guard {
     address public immutable FRAX_GOVERNOR_OMEGA_ADDRESS;
 
     /// @notice The ```constructor``` function is called on deployment
-    /// @param _fraxGovernorOmega The address of the FraxGovernorOmega contract
-    constructor(address _fraxGovernorOmega) {
-        FRAX_GOVERNOR_OMEGA_ADDRESS = _fraxGovernorOmega;
+    /// @param fraxGovernorOmega The address of the FraxGovernorOmega contract
+    constructor(address fraxGovernorOmega) {
+        FRAX_GOVERNOR_OMEGA_ADDRESS = fraxGovernorOmega;
     }
 
     /// @notice The ```checkTransaction``` function is a "callback" from within GnosisSafe::execTransaction() that runs before execution
