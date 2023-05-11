@@ -16,7 +16,6 @@ import "@openzeppelin/contracts/utils/structs/DoubleEndedQueue.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "./interfaces/IGovernor.sol";
-//TODO: diff this and original
 
 /**
  * @dev Core of the governance system, designed to be extended though various modules.

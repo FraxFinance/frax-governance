@@ -1,0 +1,19 @@
+6,7c6
+< // Disabling forgefmt to stay consistent with OZ's style.
+< // forgefmt: disable-start
+---
+> import "../Governor.sol";
+9,10d7
+< import { Governor } from "./Governor.sol";
+<
+28,33c25
+<     constructor(
+<         string memory _name,
+<         uint256 initialVotingDelay,
+<         uint256 initialVotingPeriod,
+<         uint256 initialProposalThreshold
+<     ) Governor(_name) {
+---
+>     constructor(uint256 initialVotingDelay, uint256 initialVotingPeriod, uint256 initialProposalThreshold) {
+119d110
+< // forgefmt: disable-end

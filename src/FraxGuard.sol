@@ -17,7 +17,9 @@ pragma solidity ^0.8.19;
 // Jon Walch: https://github.com/jonwalch
 
 // Reviewers
-// TODO
+// Drake Evans: https://github.com/DrakeEvans
+// Dennis: https://github.com/denett
+// Sam Kazemian: https://github.com/samkazemian
 
 // ====================================================================
 

@@ -10,8 +10,6 @@ import {
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { GovernorVotesQuorumFraction } from "./GovernorVotesQuorumFraction.sol";
 
-//TODO: diff this and original
-
 /**
  * @notice Extension of {Governor} for 3 option fractional vote counting. When
  * voting, a delegate may split their vote weight between Against/For/Abstain.

@@ -1,0 +1,46 @@
+7,8c7,8
+< import "@openzeppelin/contracts/utils/Checkpoints.sol";
+< import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+---
+> import "../../utils/Checkpoints.sol";
+> import "../../utils/math/SafeCast.sol";
+17d16
+<     using SafeCast for *;
+19a19,20
+>     uint256 private _quorumNumerator; // DEPRECATED in favor of _quorumNumeratorHistory
+>
+32,47c33
+<     constructor(
+<         address veFxsVotingDelegation,
+<         string memory _name,
+<         uint256 quorumNumeratorValue,
+<         uint256 initialVotingDelay,
+<         uint256 initialVotingPeriod,
+<         uint256 initialProposalThreshold
+<     )
+<         GovernorVotes(
+<             IVotes(veFxsVotingDelegation),
+<             _name,
+<             initialVotingDelay,
+<             initialVotingPeriod,
+<             initialProposalThreshold
+<         )
+<     {
+---
+>     constructor(uint256 quorumNumeratorValue) {
+55c41
+<         return _quorumNumeratorHistory.latest();
+---
+>         return _quorumNumeratorHistory._checkpoints.length == 0 ? _quorumNumerator : _quorumNumeratorHistory.latest();
+63a50,52
+>         if (length == 0) {
+>             return _quorumNumerator;
+>         }
+118a108,114
+>
+>         // Make sure we keep track of the original numerator in contracts upgraded from a version without checkpoints.
+>         if (oldQuorumNumerator != 0 && _quorumNumeratorHistory._checkpoints.length == 0) {
+>             _quorumNumeratorHistory._checkpoints.push(
+>                 Checkpoints.Checkpoint224({_key: 0, _value: SafeCast.toUint224(oldQuorumNumerator)})
+>             );
+>         }

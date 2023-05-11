@@ -1,0 +1,78 @@
+6,11c6,8
+< import { Governor } from "@openzeppelin/contracts/governance/Governor.sol";
+< import {
+<     GovernorCompatibilityBravo
+< } from "@openzeppelin/contracts/governance/compatibility/GovernorCompatibilityBravo.sol";
+< import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+< import { GovernorVotesQuorumFraction } from "./GovernorVotesQuorumFraction.sol";
+---
+> import {Governor} from "@openzeppelin/contracts/governance/Governor.sol";
+> import {GovernorCompatibilityBravo} from "@openzeppelin/contracts/governance/compatibility/GovernorCompatibilityBravo.sol";
+> import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+24c21,22
+< abstract contract GovernorCountingFractional is GovernorVotesQuorumFraction {
+---
+> abstract contract GovernorCountingFractional is Governor {
+>
+43,60d40
+<     constructor(
+<         address veFxsVotingDelegation,
+<         string memory _name,
+<         uint256 quorumNumeratorValue,
+<         uint256 initialVotingDelay,
+<         uint256 initialVotingPeriod,
+<         uint256 initialProposalThreshold
+<     )
+<         GovernorVotesQuorumFraction(
+<             veFxsVotingDelegation,
+<             _name,
+<             quorumNumeratorValue,
+<             initialVotingDelay,
+<             initialVotingPeriod,
+<             initialProposalThreshold
+<         )
+<     {}
+<
+88,90c68,77
+<     function proposalVotes(
+<         uint256 proposalId
+<     ) public view virtual returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) {
+---
+>     function proposalVotes(uint256 proposalId)
+>     public
+>     view
+>     virtual
+>     returns (
+>         uint256 againstVotes,
+>         uint256 forVotes,
+>         uint256 abstainVotes
+>     )
+>     {
+161c148,153
+<     function _countVoteNominal(uint256 proposalId, address account, uint128 totalWeight, uint8 support) internal {
+---
+>     function _countVoteNominal(
+>         uint256 proposalId,
+>         address account,
+>         uint128 totalWeight,
+>         uint8 support
+>     ) internal {
+237,239c229,237
+<     function _decodePackedVotes(
+<         bytes memory voteData
+<     ) internal pure returns (uint128 againstVotes, uint128 forVotes, uint128 abstainVotes) {
+---
+>     function _decodePackedVotes(bytes memory voteData)
+>     internal
+>     pure
+>     returns (
+>         uint128 againstVotes,
+>         uint128 forVotes,
+>         uint128 abstainVotes
+>     )
+>     {
+246c244
+< }
+---
+> }
+\ No newline at end of file

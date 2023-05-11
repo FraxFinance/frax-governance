@@ -7,8 +7,6 @@ import "./GovernorVotes.sol";
 import "@openzeppelin/contracts/utils/Checkpoints.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
-//TODO: diff this and original
-
 /**
  * @dev Extension of {Governor} for voting weight extraction from an {ERC20Votes} token and a quorum expressed as a
  * fraction of the total supply.

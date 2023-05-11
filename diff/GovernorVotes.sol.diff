@@ -1,0 +1,23 @@
+6,8c6,7
+< import { GovernorSettings } from "./GovernorSettings.sol";
+< import { IERC5805, IVotes } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+< import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+---
+> import "../Governor.sol";
+> import "../../interfaces/IERC5805.sol";
+15,16c14,15
+< abstract contract GovernorVotes is GovernorSettings {
+<     IERC5805 public token;
+---
+> abstract contract GovernorVotes is Governor {
+>     IERC5805 public immutable token;
+18,24c17
+<     constructor(
+<         IVotes tokenAddress,
+<         string memory _name,
+<         uint256 initialVotingDelay,
+<         uint256 initialVotingPeriod,
+<         uint256 initialProposalThreshold
+<     ) GovernorSettings(_name, initialVotingDelay, initialVotingPeriod, initialProposalThreshold) {
+---
+>     constructor(IVotes tokenAddress) {

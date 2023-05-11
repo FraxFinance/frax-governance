@@ -1,0 +1,136 @@
+6,7c6,15
+< // Disabling forgefmt to stay consistent with OZ's style.
+< // forgefmt: disable-start
+---
+> import "../token/ERC721/IERC721Receiver.sol";
+> import "../token/ERC1155/IERC1155Receiver.sol";
+> import "../utils/cryptography/ECDSA.sol";
+> import "../utils/cryptography/EIP712.sol";
+> import "../utils/introspection/ERC165.sol";
+> import "../utils/math/SafeCast.sol";
+> import "../utils/structs/DoubleEndedQueue.sol";
+> import "../utils/Address.sol";
+> import "../utils/Context.sol";
+> import "./IGovernor.sol";
+9,19d16
+< import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+< import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+< import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+< import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+< import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+< import "@openzeppelin/contracts/utils/math/SafeCast.sol";
+< import "@openzeppelin/contracts/utils/structs/DoubleEndedQueue.sol";
+< import "@openzeppelin/contracts/utils/Address.sol";
+< import "@openzeppelin/contracts/utils/Context.sol";
+< import "./interfaces/IGovernor.sol";
+<
+36c33
+<     keccak256("ExtendedBallot(uint256 proposalId,uint8 support,string reason,bytes params)");
+---
+>         keccak256("ExtendedBallot(uint256 proposalId,uint8 support,string reason,bytes params)");
+37a35
+>     // solhint-disable var-name-mixedcase
+38a37,38
+>         // --- start retyped from Timers.BlockNumber at offset 0x00 ---
+>         uint64 voteStart;
+40,41c40,44
+<         uint40 voteStart;
+<         uint40 voteEnd;
+---
+>         bytes4 __gap_unused0;
+>         // --- start retyped from Timers.BlockNumber at offset 0x20 ---
+>         uint64 voteEnd;
+>         bytes24 __gap_unused1;
+>         // --- Remaining fields starting at offset 0x40 ---------------
+44a48
+>     // solhint-enable var-name-mixedcase
+49c53
+<     mapping(uint256 => ProposalCore) public proposals;
+---
+>     mapping(uint256 => ProposalCore) private _proposals;
+98,99c102,103
+<         this.castVoteWithReasonAndParamsBySig.selector ^
+<         this.getVotesWithParams.selector;
+---
+>             this.castVoteWithReasonAndParamsBySig.selector ^
+>             this.getVotesWithParams.selector;
+103,105c107,109
+<         type(IERC6372).interfaceId ^
+<         governorCancelId ^
+<         governorParamsId;
+---
+>             type(IERC6372).interfaceId ^
+>             governorCancelId ^
+>             governorParamsId;
+113,117c117,121
+<         interfaceId == governor43Id ||
+<         interfaceId == governor46Id ||
+<         interfaceId == governorCancelId ||
+<         interfaceId == type(IERC1155Receiver).interfaceId ||
+<         super.supportsInterface(interfaceId);
+---
+>             interfaceId == governor43Id ||
+>             interfaceId == governor46Id ||
+>             interfaceId == governorCancelId ||
+>             interfaceId == type(IERC1155Receiver).interfaceId ||
+>             super.supportsInterface(interfaceId);
+160c164
+<         ProposalCore storage proposal = proposals[proposalId];
+---
+>         ProposalCore storage proposal = _proposals[proposalId];
+206c210
+<         return proposals[proposalId].voteStart;
+---
+>         return _proposals[proposalId].voteStart;
+213c217
+<         return proposals[proposalId].voteEnd;
+---
+>         return _proposals[proposalId].voteEnd;
+220c224
+<         return proposals[proposalId].proposer;
+---
+>         return _proposals[proposalId].proposer;
+283c287
+<         require(proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
+---
+>         require(_proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
+288,293c292,299
+<         proposals[proposalId] = ProposalCore({
+<         proposer: proposer,
+<         voteStart: SafeCast.toUint40(snapshot),
+<         voteEnd: SafeCast.toUint40(deadline),
+<         executed: false,
+<         canceled: false
+---
+>         _proposals[proposalId] = ProposalCore({
+>             proposer: proposer,
+>             voteStart: SafeCast.toUint64(snapshot),
+>             voteEnd: SafeCast.toUint64(deadline),
+>             executed: false,
+>             canceled: false,
+>             __gap_unused0: 0,
+>             __gap_unused1: 0
+327c333
+<         proposals[proposalId].executed = true;
+---
+>         _proposals[proposalId].executed = true;
+349c355
+<         require(_msgSender() == proposals[proposalId].proposer, "Governor: only proposer can cancel");
+---
+>         require(_msgSender() == _proposals[proposalId].proposer, "Governor: only proposer can cancel");
+424,425c430,431
+<             currentState != ProposalState.Expired &&
+<             currentState != ProposalState.Executed,
+---
+>                 currentState != ProposalState.Expired &&
+>                 currentState != ProposalState.Executed,
+428c434
+<         proposals[proposalId].canceled = true;
+---
+>         _proposals[proposalId].canceled = true;
+565c571
+<         ProposalCore storage proposal = proposals[proposalId];
+---
+>         ProposalCore storage proposal = _proposals[proposalId];
+632d637
+< // forgefmt: disable-end
