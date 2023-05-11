@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 import "./FraxGovernorTestBase.t.sol";
@@ -11,7 +11,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
     function testIncorrectSelfDelegation() public {
         hoax(accounts[0].account);
         vm.expectRevert(IVeFxsVotingDelegation.IncorrectSelfDelegation.selector);
-        veFxsVotingDelegation.delegate(accounts[0].account);
+        veFxsVotingDelegation.delegate(address(0));
     }
 
     // Assert that this account has weight themselves when they haven't delegated
@@ -35,34 +35,34 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         assertEq(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
     }
 
-    // Test all cases for veFxsVotingDelegation.calculateExpirations();
+    // Test all cases for veFxsVotingDelegation.calculateExpiredDelegations();
     function testWriteNewCheckpointForExpirations() public {
         vm.startPrank(accounts[0].account);
-        veFxsVotingDelegation.calculateExpirations(accounts[0].account);
+        veFxsVotingDelegation.calculateExpiredDelegations(accounts[0].account);
 
         // hasnt delegated no checkpoints
         vm.expectRevert(IVeFxsVotingDelegation.NoExpirations.selector);
-        veFxsVotingDelegation.writeNewCheckpointForExpirations(accounts[0].account);
+        veFxsVotingDelegation.writeNewCheckpointForExpiredDelegations(accounts[0].account);
 
         veFxsVotingDelegation.delegate(bob);
 
         //checkpoint timestamps are identical
         vm.expectRevert(IVeFxsVotingDelegation.NoExpirations.selector);
-        veFxsVotingDelegation.writeNewCheckpointForExpirations(bob);
+        veFxsVotingDelegation.writeNewCheckpointForExpiredDelegations(bob);
 
         // last instant before function will work
         vm.warp(veFxs.locked(accounts[0].account).end - 1 days - 1);
 
         //total expired FXS == 0
         vm.expectRevert(IVeFxsVotingDelegation.NoExpirations.selector);
-        veFxsVotingDelegation.writeNewCheckpointForExpirations(bob);
+        veFxsVotingDelegation.writeNewCheckpointForExpiredDelegations(bob);
 
         vm.warp(veFxs.locked(accounts[0].account).end - 1 days);
 
         uint256 weight = veFxsVotingDelegation.getVotes(bob);
 
         //total expired FXS != 0
-        veFxsVotingDelegation.writeNewCheckpointForExpirations(bob);
+        veFxsVotingDelegation.writeNewCheckpointForExpiredDelegations(bob);
         // same before and after writing this checkpoint
         assertEq(weight, veFxsVotingDelegation.getVotes(bob));
 
@@ -86,9 +86,9 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         IVeFxsVotingDelegation.DelegateCheckpoint memory dc = veFxsVotingDelegation.getCheckpoint(bob, 0);
         assertEq(dc.timestamp, ((block.timestamp / 1 days) * 1 days) + 1 days);
-        assertEq(dc.normalizedBias, 14_316_438_356_164_118_764_800);
-        assertEq(dc.normalizedSlope, 7_927_447_995_941);
-        assertEq(dc.totalFxs, 1000e18);
+        assertEq(dc.normalizedBias, 1_431_643_835_616_437_159_539_200);
+        assertEq(dc.normalizedSlope, 792_744_799_594_114);
+        assertEq(dc.totalFxs, 100_000e18);
     }
 
     // delegates() works
@@ -142,29 +142,32 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         assertEq(bill, veFxsVotingDelegation.delegates(eoaOwners[0].account));
     }
 
-    // Revert if trying to delegate to yourself if you're already delegated to yourself
-    function testAlreadyDelegatedToSelf() public {
+    // Make sure only the final delegate gets weight when delegator delegates twice during the same epoch
+    function testDelegateTwiceSameEpoch() public {
+        uint256 weight = veFxsVotingDelegation.getVotes(accounts[0].account);
+
         vm.startPrank(accounts[0].account);
-
-        vm.expectRevert(IVeFxsVotingDelegation.AlreadyDelegatedToSelf.selector);
-        veFxsVotingDelegation.delegate(address(0));
-
+        veFxsVotingDelegation.delegate(bill);
+        veFxsVotingDelegation.delegate(alice);
         vm.stopPrank();
-    }
 
-    // Revert if delegator has already delegated this epoch. DelegateCheckpoint epochs last 24 hours.
-    function testAlreadyDelegatedThisEpoch() public {
-        vm.startPrank(accounts[0].account);
+        assertEq(weight, veFxsVotingDelegation.getVotes(accounts[0].account));
+        assertEq(0, veFxsVotingDelegation.getVotes(bill));
+        assertEq(0, veFxsVotingDelegation.getVotes(alice));
 
-        veFxsVotingDelegation.delegate(address(1));
-
-        //instant before next epoch
         vm.warp(((block.timestamp / 1 days) * 1 days) + 1 days - 1);
 
-        vm.expectRevert(IVeFxsVotingDelegation.AlreadyDelegatedThisEpoch.selector);
-        veFxsVotingDelegation.delegate(address(2));
+        assertGt(weight, veFxsVotingDelegation.getVotes(accounts[0].account));
+        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account), 0);
+        assertEq(0, veFxsVotingDelegation.getVotes(bill));
+        assertEq(0, veFxsVotingDelegation.getVotes(alice));
 
-        vm.stopPrank();
+        vm.warp(block.timestamp + 1);
+
+        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account));
+        assertEq(0, veFxsVotingDelegation.getVotes(bill));
+        assertGt(weight, veFxsVotingDelegation.getVotes(alice));
+        assertGt(veFxsVotingDelegation.getVotes(alice), 0);
     }
 
     // Test transition phase between calling delegate() and delegation going into effect at the next epoch.
@@ -200,8 +203,8 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
             0
         );
         vm.expectEmit(true, true, true, true);
-        emit DelegateChanged(accounts[0].account, bob, address(0));
-        veFxsVotingDelegation.delegate(address(0));
+        emit DelegateChanged(accounts[0].account, bob, accounts[0].account);
+        veFxsVotingDelegation.delegate(accounts[0].account);
 
         // first delegation still in effect until next epoch
         assertEq(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
@@ -280,7 +283,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         // delegate to self
         hoax(accounts[0].account);
-        veFxsVotingDelegation.delegate(address(0));
+        veFxsVotingDelegation.delegate(accounts[0].account);
 
         // Bob should have voting power
         assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
@@ -313,12 +316,14 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
     // User can increase their veFXS lock time and the math is the same as a new lock with same duration and amount
     function testRelockRedelegate() public {
+        uint256 amount = 100_000e18;
+
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
 
-        deal(address(fxs), bill, 1000e18);
+        deal(address(fxs), bill, amount);
         vm.startPrank(bill, bill);
-        fxs.increaseAllowance(address(veFxs), 1000e18);
+        fxs.increaseAllowance(address(veFxs), amount);
         vm.stopPrank();
 
         uint256 lockEnds = veFxs.locked(accounts[0].account).end;
@@ -341,7 +346,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         // new delegator creates a lock with same end
         vm.startPrank(bill, bill);
-        veFxs.create_lock(1000e18, block.timestamp + 365 days * 4);
+        veFxs.create_lock(amount, block.timestamp + 365 days * 4);
         veFxsVotingDelegation.delegate(alice);
         vm.stopPrank();
 
@@ -396,7 +401,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         vm.warp(expiration);
 
         hoax(accounts[1].account);
-        veFxsVotingDelegation.delegate(address(0));
+        veFxsVotingDelegation.delegate(accounts[1].account);
 
         //self delegation now in effect
         vm.warp(expiration + 1 days);
@@ -703,7 +708,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         assertEq(totalVeFxs, veFxsVotingDelegation.getVotes(delegate, block.timestamp));
 
         uint256 lockEnd = veFxs.locked(address(uint160(100))).end;
-        (uint256 bias, uint128 fxs, uint128 slope) = veFxsVotingDelegation.$expirations(delegate, lockEnd);
+        (uint256 bias, uint128 fxs, uint128 slope) = veFxsVotingDelegation.$expiredDelegations(delegate, lockEnd);
         assertLt(bias, type(uint96).max);
         assertLt(fxs, type(uint96).max);
         assertLt(slope, type(uint64).max);

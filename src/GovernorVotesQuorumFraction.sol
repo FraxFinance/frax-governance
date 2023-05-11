@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.8.0) (governance/extensions/GovernorVotesQuorumFraction.sol)
+// OpenZeppelin Contracts (last updated v4.9.0-rc.0) (governance/extensions/GovernorVotesQuorumFraction.sol)
 
 pragma solidity ^0.8.0;
 
 import "./GovernorVotes.sol";
 import "@openzeppelin/contracts/utils/Checkpoints.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
+//TODO: diff this and original
 
 /**
  * @dev Extension of {Governor} for voting weight extraction from an {ERC20Votes} token and a quorum expressed as a
@@ -69,7 +71,7 @@ abstract contract GovernorVotesQuorumFraction is GovernorVotes {
         }
 
         // Otherwise, do the binary search
-        return _quorumNumeratorHistory.upperLookupRecent(timepoint.toUint32());
+        return _quorumNumeratorHistory.upperLookupRecent(SafeCast.toUint32(timepoint));
     }
 
     /**
@@ -118,7 +120,7 @@ abstract contract GovernorVotesQuorumFraction is GovernorVotes {
         uint256 oldQuorumNumerator = quorumNumerator();
 
         // Set new quorum for future proposals
-        _quorumNumeratorHistory.push(clock().toUint32(), newQuorumNumerator.toUint224());
+        _quorumNumeratorHistory.push(SafeCast.toUint32(clock()), SafeCast.toUint224(newQuorumNumerator));
 
         emit QuorumNumeratorUpdated(oldQuorumNumerator, newQuorumNumerator);
     }

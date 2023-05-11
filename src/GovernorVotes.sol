@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.6.0) (governance/extensions/GovernorVotes.sol)
+// OpenZeppelin Contracts (last updated v4.9.0-rc.0) (governance/extensions/GovernorVotes.sol)
 
 pragma solidity ^0.8.0;
 
 import { GovernorSettings } from "./GovernorSettings.sol";
 import { IERC5805, IVotes } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
+//TODO: diff this and original
 
 /**
  * @dev Extension of {Governor} for voting weight extraction from an {ERC20Votes} token, or since v4.5 an {ERC721Votes} token.

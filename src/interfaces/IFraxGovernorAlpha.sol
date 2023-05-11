@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
-
-import { VeFxsVotingDelegation } from "../../src/VeFxsVotingDelegation.sol";
+// SPDX-License-Identifier: ISC
+pragma solidity >=0.8.19;
 
 interface IFraxGovernorAlpha {
-    function $snapshotToTotalVeFxsSupply(uint256) external view returns (uint256);
+    function $snapshotTimestampToSnapshotBlockNumber(uint256) external view returns (uint256);
+
+    function $votingDelayBlocks() external view returns (uint256);
 
     function BALLOT_TYPEHASH() external view returns (bytes32);
 
@@ -113,27 +113,16 @@ interface IFraxGovernorAlpha {
 
     function proposals(
         uint256
-    )
-        external
-        view
-        returns (
-            uint64 voteStart,
-            address proposer,
-            bytes4 __gap_unused0,
-            uint64 voteEnd,
-            bytes24 __gap_unused1,
-            bool executed,
-            bool canceled
-        );
+    ) external view returns (address proposer, uint40 voteStart, uint40 voteEnd, bool executed, bool canceled);
 
     function propose(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) external returns (uint256);
+    ) external returns (uint256 proposalId);
 
-    function quorum(uint256 timepoint) external view returns (uint256);
+    function quorum(uint256 timepoint) external view returns (uint256 quorumAtTimepoint);
 
     function quorumDenominator() external view returns (uint256);
 
@@ -145,17 +134,19 @@ interface IFraxGovernorAlpha {
 
     function setProposalThreshold(uint256 newProposalThreshold) external;
 
-    function setVeFxsVotingDelegation(address _veFxsVotingDelegation) external;
+    function setVeFxsVotingDelegation(address veFxsVotingDelegation) external;
 
     function setVotingDelay(uint256 newVotingDelay) external;
 
+    function setVotingDelayBlocks(uint256 newVotingDelayBlocks) external;
+
     function setVotingPeriod(uint256 newVotingPeriod) external;
 
-    function shortCircuitNumerator() external view returns (uint256);
+    function shortCircuitNumerator() external view returns (uint256 latestShortCircuitNumerator);
 
-    function shortCircuitNumerator(uint256 timepoint) external view returns (uint256);
+    function shortCircuitNumerator(uint256 timepoint) external view returns (uint256 shortCircuitNumeratorAtTimepoint);
 
-    function shortCircuitThreshold(uint256 timepoint) external view returns (uint256);
+    function shortCircuitThreshold(uint256 timepoint) external view returns (uint256 shortCircuitThresholdAtTimepoint);
 
     function state(uint256 proposalId) external view returns (uint8);
 

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+// SPDX-License-Identifier: ISC
+pragma solidity >=0.8.19;
 
 import { Enum } from "@gnosis.pm/contracts/common/Enum.sol";
 import { SafeConfig } from "../FraxGovernorOmega.sol";
@@ -24,7 +24,9 @@ interface IFraxGovernorOmega {
 
     function $safeRequiredSignatures(address) external view returns (uint256);
 
-    function $snapshotToTotalVeFxsSupply(uint256) external view returns (uint256);
+    function $snapshotTimestampToSnapshotBlockNumber(uint256) external view returns (uint256);
+
+    function $votingDelayBlocks() external view returns (uint256);
 
     function BALLOT_TYPEHASH() external view returns (bytes32);
 
@@ -50,14 +52,14 @@ interface IFraxGovernorOmega {
         address[] memory teamSafes,
         TxHashArgs[] memory args,
         bytes[] memory signatures
-    ) external returns (uint256[] memory);
+    ) external returns (uint256[] memory optimisticProposalIds);
 
     function cancel(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    ) external returns (uint256);
+    ) external returns (uint256 proposalId);
 
     function castVote(uint256 proposalId, uint8 support) external returns (uint256);
 
@@ -149,27 +151,16 @@ interface IFraxGovernorOmega {
 
     function proposals(
         uint256
-    )
-        external
-        view
-        returns (
-            uint64 voteStart,
-            address proposer,
-            bytes4 __gap_unused0,
-            uint64 voteEnd,
-            bytes24 __gap_unused1,
-            bool executed,
-            bool canceled
-        );
+    ) external view returns (address proposer, uint40 voteStart, uint40 voteEnd, bool executed, bool canceled);
 
     function propose(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) external returns (uint256);
+    ) external returns (uint256 proposalId);
 
-    function quorum(uint256 timepoint) external view returns (uint256);
+    function quorum(uint256 timepoint) external view returns (uint256 quorumAtTimepoint);
 
     function quorumDenominator() external view returns (uint256);
 
@@ -183,17 +174,19 @@ interface IFraxGovernorOmega {
 
     function setProposalThreshold(uint256 newProposalThreshold) external;
 
-    function setVeFxsVotingDelegation(address _veFxsVotingDelegation) external;
+    function setVeFxsVotingDelegation(address veFxsVotingDelegation) external;
 
     function setVotingDelay(uint256 newVotingDelay) external;
 
+    function setVotingDelayBlocks(uint256 newVotingDelayBlocks) external;
+
     function setVotingPeriod(uint256 newVotingPeriod) external;
 
-    function shortCircuitNumerator() external view returns (uint256);
+    function shortCircuitNumerator() external view returns (uint256 latestShortCircuitNumerator);
 
-    function shortCircuitNumerator(uint256 timepoint) external view returns (uint256);
+    function shortCircuitNumerator(uint256 timepoint) external view returns (uint256 shortCircuitNumeratorAtTimepoint);
 
-    function shortCircuitThreshold(uint256 timepoint) external view returns (uint256);
+    function shortCircuitThreshold(uint256 timepoint) external view returns (uint256 shortCircuitThresholdAtTimepoint);
 
     function state(uint256 proposalId) external view returns (uint8);
 
@@ -216,13 +209,14 @@ interface IFraxGovernorOmega {
     function votingPeriod() external view returns (uint256);
 
     error BadBatchArgs();
-    error DelegateWithAlpha();
     error CannotCancelOptimisticTransaction();
-    error WrongSafeSignatureType();
-    error TransactionAlreadyApproved(bytes32 txHash);
-    error NotGovernorAlpha();
-    error WrongNonce();
-    error NonceReserved();
-    error WrongProposalState();
+    error DelegateWithAlpha();
     error DisallowedTarget(address target);
+    error NonceReserved();
+    error NotGovernorAlpha();
+    error ProposalAlreadyCanceled();
+    error TransactionAlreadyApproved(bytes32 txHash);
+    error WrongNonce();
+    error WrongProposalState();
+    error WrongSafeSignatureType();
 }

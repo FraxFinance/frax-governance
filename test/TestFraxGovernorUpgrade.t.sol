@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 import "./FraxGovernorTestBase.t.sol";
@@ -95,7 +95,7 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
         uint256 proposalId = fraxGovernorAlpha.propose(targets, values, calldatas, "");
 
         vm.warp(block.timestamp + fraxGovernorAlpha.votingPeriod());
-        vm.roll(block.number + fraxGovernorAlpha.votingDelay() / BLOCK_TIME);
+        vm.roll(block.number + fraxGovernorAlpha.votingPeriod() / BLOCK_TIME);
 
         for (uint256 i = 0; i < accounts.length; ++i) {
             if (uint256(fraxGovernorAlpha.state(proposalId)) == uint256(IGovernor.ProposalState.Active)) {

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 import { BaseScript } from "frax-std/BaseScript.sol";

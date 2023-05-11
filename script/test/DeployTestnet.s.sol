@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 import { BaseScript } from "frax-std/BaseScript.sol";
@@ -36,7 +36,7 @@ contract DeployTestnet is BaseScript {
         console.log("_address:", _address);
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](1);
-        _safeConfigs[0] = SafeConfig({ safe: Constants.ARBITRUM_TEST_MULTISIG_FINAL, requiredSignatures: 3 });
+        _safeConfigs[0] = SafeConfig({ safe: Constants.ARBITRUM_TEST_MULTISIG_FINAL2, requiredSignatures: 3 });
 
         (
             address _addressOmega,

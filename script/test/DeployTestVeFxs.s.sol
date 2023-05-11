@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 import { BaseScript } from "frax-std/BaseScript.sol";
@@ -16,7 +16,7 @@ function deployVeFxs(
     _address = address(vyperDeployer.deployContract(_contractName, _constructorParams));
 }
 
-//TODO: doesnt actually work, I manually deployed this through remix
+// Doesnt actually work, I manually deployed this through remix. See README.
 //contract DeployTestVeFxs is BaseScript {
 //    VyperDeployer immutable vyperDeployer = new VyperDeployer();
 //

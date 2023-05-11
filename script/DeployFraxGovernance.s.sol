@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 import { BaseScript } from "frax-std/BaseScript.sol";
@@ -28,10 +28,11 @@ function deployFraxGovernorAlpha(
     FraxAlphaGovernorParams memory _params = FraxAlphaGovernorParams({
         veFxs: _veFxs,
         veFxsVotingDelegation: _veFxsVotingDelegation,
-        initialVotingDelay: Constants.INITIAL_VOTING_DELAY,
+        initialVotingDelay: 1 days,
         initialVotingPeriod: 7 days,
         initialProposalThreshold: Constants.INITIAL_PROPOSAL_THRESHOLD,
-        quorumNumeratorValue: 80,
+        quorumNumeratorValue: 40,
+        initialVotingDelayBlocks: 1 days / 12,
         initialShortCircuitNumerator: Constants.INITIAL_SHORT_CIRCUIT_THRESHOLD
     });
 
@@ -51,10 +52,11 @@ function deployFraxGovernorOmega(
         veFxsVotingDelegation: _veFxsVotingDelegation,
         safeConfigs: _safeConfigs,
         _fraxGovernorAlpha: _fraxGovernorAlpha,
-        initialVotingDelay: Constants.INITIAL_VOTING_DELAY,
+        initialVotingDelay: 1 minutes,
         initialVotingPeriod: 2 days,
         initialProposalThreshold: Constants.INITIAL_PROPOSAL_THRESHOLD,
         quorumNumeratorValue: 4,
+        initialVotingDelayBlocks: 1 minutes / 12,
         initialShortCircuitNumerator: Constants.INITIAL_SHORT_CIRCUIT_THRESHOLD
     });
 

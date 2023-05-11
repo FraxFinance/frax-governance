@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 import {
@@ -114,7 +114,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         (address _fraxGuard, , ) = deployFraxGuard(_fraxGovernorOmega);
         fraxGuard = FraxGuard(_fraxGuard);
 
-        SafeTestLib.enableModule({ instance: getSafe(), module: address(fraxGovernorAlpha) });
+        SafeTestLib.enableModule({ instance: getSafe(address(multisig)), module: address(fraxGovernorAlpha) });
         SafeTestLib.enableModule({ instance: getSafe(address(multisig2)), module: address(fraxGovernorAlpha) });
 
         // add frxGovOmega signer
@@ -135,12 +135,12 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         setupFraxGuard({ _safe: address(multisig), signer: eoaOwners[0].account, _fraxGuard: address(fraxGuard) });
         setupFraxGuard({ _safe: address(multisig2), signer: eoaOwners[0].account, _fraxGuard: address(fraxGuard) });
 
-        assertEq(getSafe().safe.getOwners().length, 6);
-        assertEq(getSafe().safe.getThreshold(), 4);
-        assert(getSafe().safe.isModuleEnabled(address(fraxGovernorAlpha)));
+        assertEq(getSafe(address(multisig)).safe.getOwners().length, 6);
+        assertEq(getSafe(address(multisig)).safe.getThreshold(), 4);
+        assert(getSafe(address(multisig)).safe.isModuleEnabled(address(fraxGovernorAlpha)));
         assertEq(
             address(fraxGuard),
-            _bytesToAddress(getSafe().safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
+            _bytesToAddress(getSafe(address(multisig)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
         );
 
         assertEq(getSafe(address(multisig2)).safe.getOwners().length, 6);
@@ -151,25 +151,27 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
             _bytesToAddress(getSafe(address(multisig2)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
         );
 
+        uint256 amount = 100_000e18;
+
         // Give FXS balances to every account
         for (uint256 i = 0; i < accounts.length; ++i) {
-            deal(address(fxs), accounts[i].account, 1000e18);
-            assertEq(fxs.balanceOf(accounts[i].account), 1000e18);
+            deal(address(fxs), accounts[i].account, amount);
+            assertEq(fxs.balanceOf(accounts[i].account), amount);
         }
 
         // even distribution of lock time / veFXS balance
         for (uint256 i = 0; i < accounts.length; ++i) {
             address account = accounts[i].account;
             vm.startPrank(account, account);
-            fxs.increaseAllowance(address(veFxs), 1000e18);
-            veFxs.create_lock(1000e18, block.timestamp + (365 days * 4) / (i + 1));
+            fxs.increaseAllowance(address(veFxs), amount);
+            veFxs.create_lock(amount, block.timestamp + (365 days * 4) / (i + 1));
             vm.stopPrank();
-            assertGt(veFxs.balanceOf(account), 1000e18);
+            assertGt(veFxs.balanceOf(account), amount);
         }
 
         assertGt(veFxs.balanceOf(accounts[0].account), veFxs.balanceOf(accounts[accounts.length - 1].account));
 
-        vm.warp(block.timestamp + 12);
+        vm.warp(block.timestamp + BLOCK_TIME);
         vm.roll(block.number + 1);
     }
 
@@ -239,7 +241,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         fxs.increaseAllowance(address(veFxs), amount);
         veFxs.increase_amount(amount);
         vm.stopPrank();
-        vm.warp(block.timestamp + 12);
+        vm.warp(block.timestamp + BLOCK_TIME);
         vm.roll(block.number + 1);
     }
 
@@ -485,6 +487,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     );
 
     event VotingDelaySet(uint256 oldVotingDelay, uint256 newVotingDelay);
+    event VotingDelayBlocksSet(uint256 oldVotingDelayBlocks, uint256 newVotingDelayBlocks);
     event VotingPeriodSet(uint256 oldVotingPeriod, uint256 newVotingPeriod);
     event ProposalThresholdSet(uint256 oldProposalThreshold, uint256 newProposalThreshold);
     event VeFxsVotingDelegationSet(address oldVotingDelegation, address newVotingDelegation);

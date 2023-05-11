@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
 // ====================================================================
@@ -11,26 +11,44 @@ pragma solidity ^0.8.19;
 // ====================================================================
 // ========================= FraxGuard ================================
 // ====================================================================
-// A Gnosis Safe Guard that only allows calls to GnosisSafe.execTransaction()
-// if the privileged signer has already called GnosisSafe.approveHash() and
-// the caller is a Safe owner.
-
 // Frax Finance: https://github.com/FraxFinance
 
 // Primary Author(s)
 // Jon Walch: https://github.com/jonwalch
 
-import { IERC165 } from "@gnosis.pm/contracts/interfaces/IERC165.sol";
-import { GuardManager, Guard } from "@gnosis.pm/contracts/base/GuardManager.sol";
-import { ISafe, Enum } from "./interfaces/ISafe.sol";
+// Reviewers
+// TODO
 
+// ====================================================================
+
+import { IERC165 } from "@gnosis.pm/contracts/interfaces/IERC165.sol";
+import { Guard } from "@gnosis.pm/contracts/base/GuardManager.sol";
+import { Enum, ISafe } from "./interfaces/ISafe.sol";
+
+/// @title FraxGuard
+/// @author Jon Walch (Frax Finance) https://github.com/jonwalch
+/// @notice  A Gnosis Safe Guard that restricts Safe transaction execution to Safe owners and requires approval from FraxGovernorOmega
 contract FraxGuard is IERC165, Guard {
+    /// @notice The address of the FraxGovernorOmega contract
     address public immutable FRAX_GOVERNOR_OMEGA_ADDRESS;
 
+    /// @notice The ```constructor``` function is called on deployment
+    /// @param _fraxGovernorOmega The address of the FraxGovernorOmega contract
     constructor(address _fraxGovernorOmega) {
         FRAX_GOVERNOR_OMEGA_ADDRESS = _fraxGovernorOmega;
     }
 
+    /// @notice The ```checkTransaction``` function is a "callback" from within GnosisSafe::execTransaction() that runs before execution
+    /// @param to Destination address of Safe transaction.
+    /// @param value Ether value of Safe transaction.
+    /// @param data Data payload of Safe transaction.
+    /// @param operation Operation type of Safe transaction.
+    /// @param safeTxGas Gas that should be used for the Safe transaction.
+    /// @param baseGas Gas costs that are independent of the transaction execution(e.g. base transaction fee, signature check, payment of the refund)
+    /// @param gasPrice Gas price that should be used for the payment calculation.
+    /// @param gasToken Token address (or 0 if ETH) that is used for the payment.
+    /// @param refundReceiver Address of receiver of gas payment (or 0 if tx.origin).
+    /// @param msgSender Address of caller of GnosisSafe::execTransaction()
     function checkTransaction(
         address to,
         uint256 value,
@@ -41,7 +59,7 @@ contract FraxGuard is IERC165, Guard {
         uint256 gasPrice,
         address gasToken,
         address payable refundReceiver,
-        bytes memory, // signature
+        bytes memory, // signatures Packed signature data ({bytes32 r}{bytes32 s}{uint8 v})
         address msgSender
     ) external {
         ISafe safe = ISafe(msg.sender);
@@ -65,7 +83,8 @@ contract FraxGuard is IERC165, Guard {
         }
     }
 
-    function checkAfterExecution(bytes32 txHash, bool success) external {}
+    /// @notice The ```checkAfterExecution``` function is a "callback" from within GnosisSafe::execTransaction() that runs after execution
+    function checkAfterExecution(bytes32, /* txHash */ bool /* success */) external {}
 
     function supportsInterface(bytes4 interfaceId) external view virtual override returns (bool) {
         return

@@ -7,13 +7,17 @@ out = 'out'
 libs = ['lib']
 # Whether or not to enable `vm.ffi`
 ffi = true
+# Enables or disables via-ir
+via-ir = false
 # Enables or disables the optimizer
-# via-ir = true
 optimizer = true
 # The number of optimizer runs
 optimizer_runs = 10_000
 # Improves verification
 bytecode_hash = "none"
+# Contracts to track with --gas-report
+gas_reports = ["FraxGovernorAlpha", "FraxGovernorOmega", "VeFxsVotingDelegation", "FraxGuard"]
+
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
 
 [fmt]
