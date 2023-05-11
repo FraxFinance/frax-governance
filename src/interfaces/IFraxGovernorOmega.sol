@@ -18,13 +18,13 @@ interface IFraxGovernorOmega {
         uint256 _nonce;
     }
 
-    function $gnosisSafeToNonceToTxHash(address, uint256) external view returns (bytes32);
+    function $gnosisSafeToNonceToTxHash(address safe, uint256 safeNonce) external view returns (bytes32 txHash);
 
-    function $optimisticProposalIdToTxHash(uint256) external view returns (bytes32);
+    function $optimisticProposalIdToTxHash(uint256 proposalId) external view returns (bytes32 txHash);
 
-    function $safeRequiredSignatures(address) external view returns (uint256);
+    function $safeRequiredSignatures(address safe) external view returns (uint256 requiredSignatures);
 
-    function $snapshotTimestampToSnapshotBlockNumber(uint256) external view returns (uint256);
+    function $snapshotTimestampToSnapshotBlockNumber(uint256 snapshot) external view returns (uint256 blockNumber);
 
     function $votingDelayBlocks() external view returns (uint256);
 
@@ -188,7 +188,7 @@ interface IFraxGovernorOmega {
 
     function shortCircuitThreshold(uint256 timepoint) external view returns (uint256 shortCircuitThresholdAtTimepoint);
 
-    function state(uint256 proposalId) external view returns (uint8);
+    function state(uint256 proposalId) external view returns (uint8 proposalState);
 
     function supportsInterface(bytes4 interfaceId) external view returns (bool);
 

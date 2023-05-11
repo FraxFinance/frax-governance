@@ -58,8 +58,7 @@ abstract contract FraxGovernorBase is GovernorCountingFractional {
     Checkpoints.Trace224 private _$shortCircuitNumeratorHistory;
 
     /// @notice Lookup from snapshot timestamp to corresponding snapshot block number, used for quorum
-    //mapping(uint256 snapshot => uint256 blockNumber) public $snapshotTimestampToSnapshotBlockNumber;
-    mapping(uint256 => uint256) public $snapshotTimestampToSnapshotBlockNumber;
+    mapping(uint256 snapshot => uint256 blockNumber) public $snapshotTimestampToSnapshotBlockNumber;
 
     /// @notice The ```ShortCircuitNumeratorUpdated``` event is emitted when governance changes the short circuit numerator
     /// @param oldShortCircuitNumerator The old short circuit numerator

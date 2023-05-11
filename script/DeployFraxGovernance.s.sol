@@ -51,7 +51,7 @@ function deployFraxGovernorOmega(
         veFxs: _veFxs,
         veFxsVotingDelegation: _veFxsVotingDelegation,
         safeConfigs: _safeConfigs,
-        _fraxGovernorAlpha: _fraxGovernorAlpha,
+        fraxGovernorAlpha: _fraxGovernorAlpha,
         initialVotingDelay: 1 minutes,
         initialVotingPeriod: 2 days,
         initialProposalThreshold: Constants.INITIAL_PROPOSAL_THRESHOLD,

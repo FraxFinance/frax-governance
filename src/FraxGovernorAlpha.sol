@@ -98,8 +98,8 @@ contract FraxGovernorAlpha is FraxGovernorBase {
     /// @notice The ```state``` function is similar to OpenZeppelin's propose() with minor changes
     /// @dev Changes include: support for early success or failure using short circuit
     /// @param proposalId Proposal ID
-    /// @return ProposalState enum
-    function state(uint256 proposalId) public view override returns (ProposalState) {
+    /// @return proposalState ProposalState enum
+    function state(uint256 proposalId) public view override returns (ProposalState proposalState) {
         ProposalCore storage $proposal = proposals[proposalId];
 
         if ($proposal.executed) {

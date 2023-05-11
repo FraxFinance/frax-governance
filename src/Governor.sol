@@ -15,7 +15,7 @@ import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts/utils/structs/DoubleEndedQueue.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
-import "./interfaces/IGovernor.sol";
+import "@openzeppelin/contracts/governance/IGovernor.sol";
 
 /**
  * @dev Core of the governance system, designed to be extended though various modules.

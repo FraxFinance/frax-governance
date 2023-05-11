@@ -39,7 +39,7 @@ struct ConstructorParams {
     address veFxs;
     address veFxsVotingDelegation;
     SafeConfig[] safeConfigs;
-    address payable _fraxGovernorAlpha;
+    address payable fraxGovernorAlpha;
     uint256 initialVotingDelay;
     uint256 initialVotingPeriod;
     uint256 initialProposalThreshold;
@@ -57,16 +57,13 @@ contract FraxGovernorOmega is FraxGovernorBase {
     address public immutable FRAX_GOVERNOR_ALPHA;
 
     /// @notice Configuration and allowlist for Gnosis Safes approved for use with FraxGovernorOmega
-    //mapping(address safe => uint256 requiredSignatures) public $safeRequiredSignatures;
-    mapping(address => uint256) public $safeRequiredSignatures;
+    mapping(address safe => uint256 requiredSignatures) public $safeRequiredSignatures;
 
     /// @notice Lookup from optimistic proposal proposal id to Gnosis Safe Transaction hash
-    //mapping(uint256 proposalId => bytes32 txHash) public $optimisticProposalIdToTxHash;
-    mapping(uint256 => bytes32) public $optimisticProposalIdToTxHash;
+    mapping(uint256 proposalId => bytes32 txHash) public $optimisticProposalIdToTxHash;
 
     /// @notice Lookup from Gnosis Safe to nonce to corresponding transaction hash
-    //mapping(address safe => mapping(uint256 safeNonce => bytes32 txHash)) public $gnosisSafeToNonceToTxHash;
-    mapping(address => mapping(uint256 => bytes32)) public $gnosisSafeToNonceToTxHash;
+    mapping(address safe => mapping(uint256 safeNonce => bytes32 txHash)) public $gnosisSafeToNonceToTxHash;
 
     /// @notice The ```SafeConfigUpdate``` event is emitted when governance changes Gnosis Safe configuration
     /// @param safe The address of the Gnosis Safe
@@ -107,7 +104,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
             })
         )
     {
-        FRAX_GOVERNOR_ALPHA = params._fraxGovernorAlpha;
+        FRAX_GOVERNOR_ALPHA = params.fraxGovernorAlpha;
 
         for (uint256 i = 0; i < params.safeConfigs.length; ++i) {
             SafeConfig memory config = params.safeConfigs[i];
@@ -220,7 +217,16 @@ contract FraxGovernorOmega is FraxGovernorBase {
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) public override returns (uint256 proposalId) {
-        if ($optimisticProposalIdToTxHash[hashProposal(targets, values, calldatas, descriptionHash)] != 0) {
+        if (
+            $optimisticProposalIdToTxHash[
+                hashProposal({
+                    targets: targets,
+                    values: values,
+                    calldatas: calldatas,
+                    descriptionHash: descriptionHash
+                })
+            ] != 0
+        ) {
             revert IFraxGovernorOmega.CannotCancelOptimisticTransaction();
         }
 
@@ -317,7 +323,16 @@ contract FraxGovernorOmega is FraxGovernorBase {
             safe: teamSafe,
             txHash: originalTxHash
         });
-        if (state(hashProposal(targets, values, calldatas, keccak256(bytes("")))) != ProposalState.Defeated) {
+        if (
+            state(
+                hashProposal({
+                    targets: targets,
+                    values: values,
+                    calldatas: calldatas,
+                    descriptionHash: keccak256(bytes(""))
+                })
+            ) != ProposalState.Defeated
+        ) {
             revert IFraxGovernorOmega.WrongProposalState();
         }
 
@@ -504,8 +519,8 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @notice The ```state``` function is similar to OpenZeppelin's propose() with minor changes
     /// @dev Changes include: support for early success or failure using short circuit and optimistic proposals
     /// @param proposalId Proposal ID
-    /// @return ProposalState enum
-    function state(uint256 proposalId) public view override returns (ProposalState) {
+    /// @return proposalState ProposalState enum
+    function state(uint256 proposalId) public view override returns (ProposalState proposalState) {
         ProposalCore storage $proposal = proposals[proposalId];
 
         if ($proposal.executed) {

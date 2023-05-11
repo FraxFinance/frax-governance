@@ -2,7 +2,7 @@
 pragma solidity >=0.8.19;
 
 interface IFraxGovernorAlpha {
-    function $snapshotTimestampToSnapshotBlockNumber(uint256) external view returns (uint256);
+    function $snapshotTimestampToSnapshotBlockNumber(uint256 snapshot) external view returns (uint256 blockNumber);
 
     function $votingDelayBlocks() external view returns (uint256);
 
@@ -148,7 +148,7 @@ interface IFraxGovernorAlpha {
 
     function shortCircuitThreshold(uint256 timepoint) external view returns (uint256 shortCircuitThresholdAtTimepoint);
 
-    function state(uint256 proposalId) external view returns (uint8);
+    function state(uint256 proposalId) external view returns (uint8 proposalState);
 
     function supportsInterface(bytes4 interfaceId) external view returns (bool);
 
