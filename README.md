@@ -15,7 +15,7 @@ The Frax team has a special Governor contract called FraxGovernorOmega. Omega al
 ![End to End Governance Process](./frxGovSwimlanes.png "End to End Governance Process")
 
 ## FraxGovernorAlpha
-High quorum. Must be set as a Module on underlying Gnosis Safes. It has full control over the Gnosis Safes. Only veFXS holders can call `propose()`. Alpha controls all governance parameters, including governance parameters on Omega.
+High quorum. Alpha's TimelockController must be set as a Module on underlying Gnosis Safes. It has full control over the Gnosis Safes. Only veFXS holders can call `propose()`. Alpha controls all governance parameters, including governance parameters on Omega.
 
 ### General Flow
 Identical to OpenZeppelin Governor.

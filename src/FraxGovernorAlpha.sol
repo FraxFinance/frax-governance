@@ -23,12 +23,16 @@ pragma solidity ^0.8.19;
 
 // ====================================================================
 
-import { FraxGovernorBase, ConstructorParams as FraxGovernorBaseParams } from "./FraxGovernorBase.sol";
+import { IERC165 } from "@openzeppelin/contracts/interfaces/IERC165.sol";
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
+import { Governor } from "./Governor.sol";
+import { GovernorTimelockControl } from "./GovernorTimelockControl.sol";
 import { IFraxGovernorAlpha } from "./interfaces/IFraxGovernorAlpha.sol";
 
 struct ConstructorParams {
     address veFxs;
     address veFxsVotingDelegation;
+    address payable timelockController;
     uint256 initialVotingDelay;
     uint256 initialVotingPeriod;
     uint256 initialProposalThreshold;
@@ -39,27 +43,11 @@ struct ConstructorParams {
 
 /// @title FraxGovernorAlpha
 /// @author Jon Walch (Frax Finance) https://github.com/jonwalch
-/// @notice A Governance contract with intended use as a Gnosis Safe Module, giving it full control over the Safe(s).
-contract FraxGovernorAlpha is FraxGovernorBase {
+/// @notice A Governance contract with its TimelockController set as a Gnosis Safe Module, giving it full control over the Safe(s).
+contract FraxGovernorAlpha is GovernorTimelockControl {
     /// @notice The ```constructor``` function is called on deployment
     /// @param params ConstructorParams struct
-    constructor(
-        ConstructorParams memory params
-    )
-        FraxGovernorBase(
-            FraxGovernorBaseParams({
-                veFxs: params.veFxs,
-                veFxsVotingDelegation: params.veFxsVotingDelegation,
-                _name: "FraxGovernorAlpha",
-                initialVotingDelay: params.initialVotingDelay,
-                initialVotingPeriod: params.initialVotingPeriod,
-                initialProposalThreshold: params.initialProposalThreshold,
-                quorumNumeratorValue: params.quorumNumeratorValue,
-                initialVotingDelayBlocks: params.initialVotingDelayBlocks,
-                initialShortCircuitNumerator: params.initialShortCircuitNumerator
-            })
-        )
-    {}
+    constructor(ConstructorParams memory params) GovernorTimelockControl(params) {}
 
     /// @notice The ```propose``` function is similar to OpenZeppelin's propose() with minor changes
     /// @dev Proposals that interact with a Gnosis Safe need to use GnosisSafe::execTransactionFromModule()
@@ -69,7 +57,7 @@ contract FraxGovernorAlpha is FraxGovernorBase {
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) public override returns (uint256 proposalId) {
+    ) public override(Governor, IGovernor) returns (uint256 proposalId) {
         _requireSenderAboveProposalThreshold();
         proposalId = _propose({ targets: targets, values: values, calldatas: calldatas, description: description });
     }
@@ -95,11 +83,35 @@ contract FraxGovernorAlpha is FraxGovernorBase {
         _updateShortCircuitNumerator(newShortCircuitNumerator);
     }
 
-    /// @notice The ```state``` function is similar to OpenZeppelin's propose() with minor changes
+    /// @notice The ```state``` function is largely copied from GovernorTimelockControl
     /// @dev Changes include: support for early success or failure using short circuit
     /// @param proposalId Proposal ID
     /// @return proposalState ProposalState enum
     function state(uint256 proposalId) public view override returns (ProposalState proposalState) {
+        ProposalState currentState = _state(proposalId);
+
+        if (currentState != ProposalState.Succeeded) {
+            return currentState;
+        }
+
+        // core tracks execution, so we just have to check if successful proposal have been queued.
+        bytes32 queueid = $timelockIds[proposalId];
+        if (queueid == bytes32(0)) {
+            return currentState;
+        } else if ($timelock.isOperationDone(queueid)) {
+            return ProposalState.Executed; // never hit because execution is marked in _state on the proposal
+        } else if ($timelock.isOperationPending(queueid)) {
+            return ProposalState.Queued;
+        } else {
+            return ProposalState.Canceled; // never hit because cant cancel after voting delay
+        }
+    }
+
+    /// @notice The ```_state``` function emulates OpenZeppelin Governor's state function with a small change
+    /// @dev The only change is support for early
+    /// @param proposalId Proposal ID
+    /// @return proposalState Proposal state
+    function _state(uint256 proposalId) private view returns (ProposalState proposalState) {
         ProposalCore storage $proposal = proposals[proposalId];
 
         if ($proposal.executed) {

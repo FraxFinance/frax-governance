@@ -4,6 +4,10 @@ pragma solidity >=0.8.19;
 interface IFraxGovernorAlpha {
     function $snapshotTimestampToSnapshotBlockNumber(uint256 snapshot) external view returns (uint256 blockNumber);
 
+    function $timelock() external view returns (address);
+
+    function $timelockIds(uint256) external view returns (bytes32);
+
     function $votingDelayBlocks() external view returns (uint256);
 
     function BALLOT_TYPEHASH() external view returns (bytes32);
@@ -101,6 +105,8 @@ interface IFraxGovernorAlpha {
 
     function proposalDeadline(uint256 proposalId) external view returns (uint256);
 
+    function proposalEta(uint256 proposalId) external view returns (uint256);
+
     function proposalProposer(uint256 proposalId) external view returns (address);
 
     function proposalSnapshot(uint256 proposalId) external view returns (uint256);
@@ -121,6 +127,13 @@ interface IFraxGovernorAlpha {
         bytes[] memory calldatas,
         string memory description
     ) external returns (uint256 proposalId);
+
+    function queue(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) external returns (uint256);
 
     function quorum(uint256 timepoint) external view returns (uint256 quorumAtTimepoint);
 
@@ -152,11 +165,15 @@ interface IFraxGovernorAlpha {
 
     function supportsInterface(bytes4 interfaceId) external view returns (bool);
 
+    function timelock() external view returns (address);
+
     function token() external view returns (address);
 
     function updateQuorumNumerator(uint256 newQuorumNumerator) external;
 
     function updateShortCircuitNumerator(uint256 newShortCircuitNumerator) external;
+
+    function updateTimelock(address newTimelock) external;
 
     function version() external view returns (string memory);
 

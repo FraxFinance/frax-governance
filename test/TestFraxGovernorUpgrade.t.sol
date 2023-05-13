@@ -5,17 +5,29 @@ import "./FraxGovernorTestBase.t.sol";
 
 contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
     IFraxGovernorAlpha fraxGovernorAlphaUpgrade;
+    TimelockController timelockControllerUpgrade;
     IFraxGovernorOmega fraxGovernorOmegaUpgrade;
     FraxGuard fraxGuardUpgrade;
 
     function setUp() public override {
         super.setUp();
 
+        (address payable _timelockController, , ) = deployTimelockController();
+        timelockControllerUpgrade = TimelockController(_timelockController);
+
         (address payable _fraxGovernorAlpha, , ) = deployFraxGovernorAlpha(
             address(veFxs),
-            address(veFxsVotingDelegation)
+            address(veFxsVotingDelegation),
+            _timelockController
         );
         fraxGovernorAlphaUpgrade = IFraxGovernorAlpha(_fraxGovernorAlpha);
+
+        vm.startPrank(msg.sender);
+        timelockControllerUpgrade.grantRole(timelockControllerUpgrade.PROPOSER_ROLE(), _fraxGovernorAlpha);
+        timelockControllerUpgrade.grantRole(timelockControllerUpgrade.EXECUTOR_ROLE(), _fraxGovernorAlpha);
+        timelockControllerUpgrade.grantRole(timelockControllerUpgrade.CANCELLER_ROLE(), _fraxGovernorAlpha);
+        timelockControllerUpgrade.renounceRole(timelockControllerUpgrade.TIMELOCK_ADMIN_ROLE(), msg.sender);
+        vm.stopPrank();
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](1);
         _safeConfigs[0] = SafeConfig({ safe: address(multisig), requiredSignatures: 3 });
@@ -24,7 +36,7 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
             address(veFxs),
             address(veFxsVotingDelegation),
             _safeConfigs,
-            _fraxGovernorAlpha
+            _timelockController
         );
         fraxGovernorOmegaUpgrade = IFraxGovernorOmega(_fraxGovernorOmega);
 
@@ -48,7 +60,7 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
             Enum.Operation.Call
         );
 
-        // Add new alpha as module
+        // Add new timelock as module
         targets[1] = address(multisig);
         calldatas[1] = genericAlphaSafeProposalData(
             address(multisig),
@@ -78,7 +90,7 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
         targets[3] = address(fraxGovernorOmega);
         calldatas[3] = abi.encodeWithSelector(IFraxGovernorOmega.updateSafes.selector, _safeConfigs);
 
-        // Remove old alpha as module
+        // Remove old timelock as module
         targets[4] = address(multisig);
         calldatas[4] = genericAlphaSafeProposalData(
             address(multisig),
@@ -105,6 +117,10 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
         }
 
         assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(proposalId)));
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+
+        vm.warp(fraxGovernorAlpha.proposalEta(proposalId));
 
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 

@@ -36,7 +36,7 @@ interface IFraxGovernorOmega {
 
     function EXTENDED_BALLOT_TYPEHASH() external view returns (bytes32);
 
-    function FRAX_GOVERNOR_ALPHA() external view returns (address);
+    function TIMELOCK_CONTROLLER() external view returns (address);
 
     function VE_FXS() external view returns (address);
 
@@ -213,7 +213,7 @@ interface IFraxGovernorOmega {
     error DelegateWithAlpha();
     error DisallowedTarget(address target);
     error NonceReserved();
-    error NotGovernorAlpha();
+    error NotTimelockController();
     error ProposalAlreadyCanceled();
     error TransactionAlreadyApproved(bytes32 txHash);
     error WrongNonce();

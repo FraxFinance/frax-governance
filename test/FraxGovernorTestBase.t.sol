@@ -4,7 +4,9 @@ pragma solidity ^0.8.19;
 import {
     GovernorCompatibilityBravo
 } from "@openzeppelin/contracts/governance/compatibility/GovernorCompatibilityBravo.sol";
+import { TimelockController } from "@openzeppelin/contracts/governance/TimelockController.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
+import { IGovernorTimelock } from "@openzeppelin/contracts/governance/extensions/IGovernorTimelock.sol";
 import "frax-std/FraxTest.sol";
 import { SafeTestTools, SafeTestLib, SafeInstance, DeployedSafe, ModuleManager } from "safe-tools/SafeTestTools.sol";
 import { FraxGovernorAlpha, ConstructorParams } from "../src/FraxGovernorAlpha.sol";
@@ -17,11 +19,13 @@ import "../src/interfaces/IFraxGovernorAlpha.sol";
 import "../src/interfaces/IFraxGovernorOmega.sol";
 import { FraxGovernorBase } from "../src/FraxGovernorBase.sol";
 import {
-    deployVeFxsVotingDelegation,
     deployFraxGovernorAlpha,
     deployFraxGovernorOmega,
-    deployFraxGuard
-} from "../script/DeployFraxGovernance.s.sol";
+    deployFraxGuard,
+    deployTimelockController,
+    deployVeFxsVotingDelegation,
+    SafeConfig
+} from "script/DeployFraxGovernance.s.sol";
 import { deployMockFxs } from "../script/test/DeployTestFxs.s.sol";
 import { deployVeFxs } from "../script/test/DeployTestVeFxs.s.sol";
 import { Constants } from "../script/Constants.sol";
@@ -38,6 +42,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     ISafe multisig2;
     IVeFxsVotingDelegation veFxsVotingDelegation;
     IFraxGovernorAlpha fraxGovernorAlpha;
+    TimelockController timelockController;
     IFraxGovernorOmega fraxGovernorOmega;
     FraxGuard fraxGuard;
 
@@ -96,8 +101,22 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         (address _veFxsVotingDelegation, , ) = deployVeFxsVotingDelegation(_mockVeFxs);
         veFxsVotingDelegation = IVeFxsVotingDelegation(_veFxsVotingDelegation);
 
-        (address payable _fraxGovernorAlpha, , ) = deployFraxGovernorAlpha(_mockVeFxs, _veFxsVotingDelegation);
+        (address payable _timelockController, , ) = deployTimelockController();
+        timelockController = TimelockController(_timelockController);
+
+        (address payable _fraxGovernorAlpha, , ) = deployFraxGovernorAlpha(
+            _mockVeFxs,
+            _veFxsVotingDelegation,
+            _timelockController
+        );
         fraxGovernorAlpha = IFraxGovernorAlpha(_fraxGovernorAlpha);
+
+        vm.startPrank(msg.sender);
+        timelockController.grantRole(timelockController.PROPOSER_ROLE(), _fraxGovernorAlpha);
+        timelockController.grantRole(timelockController.EXECUTOR_ROLE(), _fraxGovernorAlpha);
+        timelockController.grantRole(timelockController.CANCELLER_ROLE(), _fraxGovernorAlpha);
+        timelockController.renounceRole(timelockController.TIMELOCK_ADMIN_ROLE(), msg.sender);
+        vm.stopPrank();
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](2);
         _safeConfigs[0] = SafeConfig({ safe: address(multisig), requiredSignatures: 3 });
@@ -107,15 +126,15 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
             _mockVeFxs,
             _veFxsVotingDelegation,
             _safeConfigs,
-            _fraxGovernorAlpha
+            _timelockController
         );
         fraxGovernorOmega = IFraxGovernorOmega(_fraxGovernorOmega);
 
         (address _fraxGuard, , ) = deployFraxGuard(_fraxGovernorOmega);
         fraxGuard = FraxGuard(_fraxGuard);
 
-        SafeTestLib.enableModule({ instance: getSafe(address(multisig)), module: address(fraxGovernorAlpha) });
-        SafeTestLib.enableModule({ instance: getSafe(address(multisig2)), module: address(fraxGovernorAlpha) });
+        SafeTestLib.enableModule({ instance: getSafe(address(multisig)), module: address(timelockController) });
+        SafeTestLib.enableModule({ instance: getSafe(address(multisig2)), module: address(timelockController) });
 
         // add frxGovOmega signer
         addSignerToSafe({
@@ -137,7 +156,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
 
         assertEq(getSafe(address(multisig)).safe.getOwners().length, 6);
         assertEq(getSafe(address(multisig)).safe.getThreshold(), 4);
-        assert(getSafe(address(multisig)).safe.isModuleEnabled(address(fraxGovernorAlpha)));
+        assert(getSafe(address(multisig)).safe.isModuleEnabled(address(timelockController)));
         assertEq(
             address(fraxGuard),
             _bytesToAddress(getSafe(address(multisig)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
@@ -145,7 +164,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
 
         assertEq(getSafe(address(multisig2)).safe.getOwners().length, 6);
         assertEq(getSafe(address(multisig2)).safe.getThreshold(), 4);
-        assert(getSafe(address(multisig2)).safe.isModuleEnabled(address(fraxGovernorAlpha)));
+        assert(getSafe(address(multisig2)).safe.isModuleEnabled(address(timelockController)));
         assertEq(
             address(fraxGuard),
             _bytesToAddress(getSafe(address(multisig2)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
@@ -493,6 +512,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     event VeFxsVotingDelegationSet(address oldVotingDelegation, address newVotingDelegation);
     event QuorumNumeratorUpdated(uint256 oldQuorumNumerator, uint256 newQuorumNumerator);
     event ShortCircuitNumeratorUpdated(uint256 oldShortCircuitThreshold, uint256 newShortCircuitThreshold);
+    event TimelockChange(address oldTimelock, address newTimelock);
 
     event SafeConfigUpdate(address indexed safe, uint256 oldRequiredSignatures, uint256 newRequiredSignatures);
 

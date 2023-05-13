@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: ISC
 pragma solidity ^0.8.19;
 
+import { TimelockController } from "@openzeppelin/contracts/governance/TimelockController.sol";
 import { BaseScript } from "frax-std/BaseScript.sol";
 import { console } from "frax-std/FraxTest.sol";
 import { Constants } from "../script/Constants.sol";
@@ -21,15 +22,29 @@ function deployVeFxsVotingDelegation(
     _address = payable(address(new VeFxsVotingDelegation(_veFxs)));
 }
 
+function deployTimelockController()
+    returns (address payable _address, bytes memory _constructorParams, string memory _contractName)
+{
+    uint256 minDelay = 1 days;
+    address[] memory proposers = new address[](0);
+    address[] memory executors = new address[](0);
+    address admin = msg.sender;
+    _constructorParams = abi.encode(minDelay, proposers, executors, admin);
+    _contractName = "TimelockController";
+    _address = payable(address(new TimelockController(minDelay, proposers, executors, admin)));
+}
+
 function deployFraxGovernorAlpha(
     address _veFxs,
-    address _veFxsVotingDelegation
+    address _veFxsVotingDelegation,
+    address payable _timelockController
 ) returns (address payable _address, bytes memory _constructorParams, string memory _contractName) {
     FraxAlphaGovernorParams memory _params = FraxAlphaGovernorParams({
         veFxs: _veFxs,
         veFxsVotingDelegation: _veFxsVotingDelegation,
+        timelockController: _timelockController,
         initialVotingDelay: 1 days,
-        initialVotingPeriod: 7 days,
+        initialVotingPeriod: 5 days,
         initialProposalThreshold: Constants.INITIAL_PROPOSAL_THRESHOLD,
         quorumNumeratorValue: 40,
         initialVotingDelayBlocks: 1 days / 12,
@@ -45,13 +60,13 @@ function deployFraxGovernorOmega(
     address _veFxs,
     address _veFxsVotingDelegation,
     SafeConfig[] memory _safeConfigs,
-    address payable _fraxGovernorAlpha
+    address payable _timelockController
 ) returns (address payable _address, bytes memory _constructorParams, string memory _contractName) {
     FraxGovernorOmegaParams memory _params = FraxGovernorOmegaParams({
         veFxs: _veFxs,
         veFxsVotingDelegation: _veFxsVotingDelegation,
         safeConfigs: _safeConfigs,
-        fraxGovernorAlpha: _fraxGovernorAlpha,
+        timelockController: _timelockController,
         initialVotingDelay: 1 minutes,
         initialVotingPeriod: 2 days,
         initialProposalThreshold: Constants.INITIAL_PROPOSAL_THRESHOLD,
@@ -86,10 +101,26 @@ contract DeployFraxGovernance is BaseScript {
         console.logBytes(_constructorParamsVoting);
         console.log("_addressVoting:", _addressVoting);
 
-        (_address, _constructorParams, _contractName) = deployFraxGovernorAlpha(Constants.VE_FXS, _addressVoting);
+        (address payable _addressTimelock, bytes memory _constructorParamsTimelock, ) = deployTimelockController();
+        console.log("_constructorParamsTimelock:", string(abi.encode(_constructorParamsTimelock)));
+        console.logBytes(_constructorParamsTimelock);
+        console.log("_addressTimelock:", _addressTimelock);
+
+        (_address, _constructorParams, _contractName) = deployFraxGovernorAlpha(
+            Constants.VE_FXS,
+            _addressVoting,
+            _addressTimelock
+        );
         console.log("_constructorParamsAlpha:", string(abi.encode(_constructorParams)));
         console.logBytes(_constructorParams);
         console.log("_addressAlpha:", _address);
+
+        TimelockController tc = TimelockController(_addressTimelock);
+
+        tc.grantRole(tc.PROPOSER_ROLE(), _address);
+        tc.grantRole(tc.EXECUTOR_ROLE(), _address);
+        tc.grantRole(tc.CANCELLER_ROLE(), _address);
+        tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), msg.sender);
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](2);
         //        _safeConfigs[0] = SafeConfig({safe: address(0), requiredSignatures: 3}); //TODO: prod values
@@ -97,7 +128,7 @@ contract DeployFraxGovernance is BaseScript {
             address _addressOmega,
             bytes memory _constructorParamsOmega /* string memory _contractNameOmega */,
 
-        ) = deployFraxGovernorOmega(Constants.VE_FXS, _addressVoting, _safeConfigs, _address);
+        ) = deployFraxGovernorOmega(Constants.VE_FXS, _addressVoting, _safeConfigs, _addressTimelock);
         console.log("_constructorParamsOmega:", string(abi.encode(_constructorParamsOmega)));
         console.logBytes(_constructorParamsOmega);
         console.log("_addressOmega:", _addressOmega);

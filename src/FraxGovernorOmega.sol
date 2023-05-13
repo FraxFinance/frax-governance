@@ -39,7 +39,7 @@ struct ConstructorParams {
     address veFxs;
     address veFxsVotingDelegation;
     SafeConfig[] safeConfigs;
-    address payable fraxGovernorAlpha;
+    address payable timelockController;
     uint256 initialVotingDelay;
     uint256 initialVotingPeriod;
     uint256 initialProposalThreshold;
@@ -54,7 +54,7 @@ struct ConstructorParams {
 /// @notice Supports optimistic proposals for Gnosis Safe transactions, that default to ```ProposalState.Succeeded```, through ```addTransaction()```.
 contract FraxGovernorOmega is FraxGovernorBase {
     /// @notice The address of the FraxGovernorAlpha contract
-    address public immutable FRAX_GOVERNOR_ALPHA;
+    address public immutable TIMELOCK_CONTROLLER;
 
     /// @notice Configuration and allowlist for Gnosis Safes approved for use with FraxGovernorOmega
     mapping(address safe => uint256 requiredSignatures) public $safeRequiredSignatures;
@@ -104,7 +104,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
             })
         )
     {
-        FRAX_GOVERNOR_ALPHA = params.fraxGovernorAlpha;
+        TIMELOCK_CONTROLLER = params.timelockController;
 
         for (uint256 i = 0; i < params.safeConfigs.length; ++i) {
             SafeConfig memory config = params.safeConfigs[i];
@@ -118,8 +118,8 @@ contract FraxGovernorOmega is FraxGovernorBase {
     }
 
     /// @notice The ```_requireOnlyGovernorAlpha``` function checks if the caller is FraxGovernorAlpha
-    function _requireOnlyGovernorAlpha() internal view {
-        if (msg.sender != FRAX_GOVERNOR_ALPHA) revert IFraxGovernorOmega.NotGovernorAlpha();
+    function _requireOnlyTimelockController() internal view {
+        if (msg.sender != TIMELOCK_CONTROLLER) revert IFraxGovernorOmega.NotTimelockController();
     }
 
     /// @notice The ```_requireAllowlist``` function checks if the safe has more than 0 requiredSignatures, which means it is allowlisted.
@@ -430,7 +430,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newVotingDelay New voting delay in seconds
     function setVotingDelay(uint256 newVotingDelay) public override {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
         _setVotingDelay(newVotingDelay);
     }
 
@@ -438,7 +438,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newVotingDelayBlocks New voting delay in blocks
     function setVotingDelayBlocks(uint256 newVotingDelayBlocks) external {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
         _setVotingDelayBlocks(newVotingDelayBlocks);
     }
 
@@ -446,7 +446,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newVotingPeriod New voting period in seconds
     function setVotingPeriod(uint256 newVotingPeriod) public override {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
         _setVotingPeriod(newVotingPeriod);
     }
 
@@ -455,7 +455,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newProposalThreshold New voting period in amount of veFXS
     function setProposalThreshold(uint256 newProposalThreshold) public override {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
         _setProposalThreshold(newProposalThreshold);
     }
 
@@ -463,7 +463,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newQuorumNumerator Number expressed as x/100 (percentage)
     function updateQuorumNumerator(uint256 newQuorumNumerator) external override {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
         _updateQuorumNumerator(newQuorumNumerator);
     }
 
@@ -471,7 +471,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param veFxsVotingDelegation New ```IERC5805``` veFxsVotingDelegation contract address
     function setVeFxsVotingDelegation(address veFxsVotingDelegation) external {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
         _setVeFxsVotingDelegation(veFxsVotingDelegation);
     }
 
@@ -479,18 +479,18 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newShortCircuitNumerator Number expressed as x/100 (percentage)
     function updateShortCircuitNumerator(uint256 newShortCircuitNumerator) external {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
         _updateShortCircuitNumerator(newShortCircuitNumerator);
     }
 
     /// @notice The ```updateSafes``` function is called by governance to allowlist safes and set the amount of required signatures needed to add the transaction with addTransaction()
     /// @notice Safes are expected to be properly configured before calling this function
-    /// @notice Proper configuration entails having: the FraxGuard set, FraxGovernorOmega set as a signer and FraxGovernor Alpha as a Module
+    /// @notice Proper configuration entails having: the FraxGuard set, FraxGovernorOmega set as a signer and FraxGovernorAlpha's TimelockController as a Module
     /// @dev Can use to add or remove safes. See TestFraxGovernorUpgrade.t.sol for upgrade path
     /// @dev Set config.requiredSignatures to 0 to remove the Safe from the allowlist
     /// @param safeConfigs Array of SafeConfig
     function updateSafes(SafeConfig[] calldata safeConfigs) external {
-        _requireOnlyGovernorAlpha();
+        _requireOnlyTimelockController();
 
         for (uint256 i = 0; i < safeConfigs.length; ++i) {
             SafeConfig calldata config = safeConfigs[i];
