@@ -26,7 +26,7 @@ Low quorum. Signer on underlying Gnosis Safe, so limited control. Only veFXS hol
 ### General Flow
 #### DeFi transaction
 1. An owner uses the Gnosis Safe to initiate a DeFi transaction. This produces a transaction hash that identifies the action to be approved or rejected by the other multisig owners.
-2. ⅗ EOA sign the transaction through the UI
+2. ⅗ EOA sign the transaction through the UI.
 3. After 3 signatures are collected, anyone can call `fraxGovernorOmega.addTransaction(address teamSafe, TxHashArgs calldata args, bytes calldata signatures)` to begin onchain governance. The team is incentivized to do so because they cannot execute any Gnosis Tx without FraxGovernorOmega’s approval.
 4. veFXS voters have a 2-day window of time to vote on the proposal.
 5. If no quorum is met during the voting window, or there are more for than against votes on the proposal, anyone can call `execute()`. This calls `safe.approveHash()` from Omega under the hood. It provides the needed approval from FraxGovernorOmega, which will allow the gnosis transaction to be executed through the Gnosis UI.
@@ -35,10 +35,10 @@ Low quorum. Signer on underlying Gnosis Safe, so limited control. Only veFXS hol
 #### Abort Transaction Flow
 This flow exists to stop a gnosis transaction that is deemed wrong or no longer needed.
 
-1. 1 EOA owner starts a rejection transaction in the gnosis safe UI
-2. ⅗ EOA sign the rejection tx
+1. 1 EOA owner starts a rejection transaction in the gnosis safe UI.
+2. ⅗ EOA sign the rejection tx.
 3. Anyone can call `fraxGovernorOmega.abortTransaction(address teamSafe, bytes calldata signatures)` which immediately causes Omega to approve the rejection tx (zero eth transfer) on the underlying gnosis safe with the provided nonce.
-4. Safe Owners can now execute the approved transaction
+4. Safe Owners can now execute the approved transaction.
 5. This increments the nonce, rendering the original tx and accompanying veto proposal useless.
 6. If the original transaction was already put into FraxGovernorOmega with `addNewTransaction()`, the underlying proposal will be marked `ProposalState.Canceled` so no one else can vote on it.
 

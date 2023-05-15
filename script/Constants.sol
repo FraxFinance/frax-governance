@@ -7,7 +7,7 @@ library Constants {
 
     address internal constant VE_FXS = 0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0;
 
-    address internal constant ARBITRUM_TEST_MULTISIG_FINAL3 = 0xc093fa5c6bb1376ea4c0fa8c66Ee2cE9aC0bc81F;
+    address internal constant ARBITRUM_TEST_MULTISIG_FINAL4 = 0x8326E59a823F8975664a4BA9d0d9ccf86755c6e3;
     address internal constant ARBITRUM_TEST_MOCK_FXS = 0x6B83c4f3a6729Fb7D5e19b720092162DF439f567;
     address internal constant ARBITRUM_TEST_MOCK_VE_FXS = 0x3Fdb3bd1ab409F0CBB2c4d919b2205ac881B99ED;
 }

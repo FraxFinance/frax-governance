@@ -29,7 +29,9 @@ contract DeployTestnet is BaseScript {
         console.logBytes(_constructorParamsVoting);
         console.log("_addressVoting:", _addressVoting);
 
-        (address payable _addressTimelock, bytes memory _constructorParamsTimelock, ) = deployTimelockController();
+        (address payable _addressTimelock, bytes memory _constructorParamsTimelock, ) = deployTimelockController(
+            deployer
+        );
         console.log("_constructorParamsTimelock:", string(abi.encode(_constructorParamsTimelock)));
         console.logBytes(_constructorParamsTimelock);
         console.log("_addressTimelock:", _addressTimelock);
@@ -48,10 +50,10 @@ contract DeployTestnet is BaseScript {
         tc.grantRole(tc.PROPOSER_ROLE(), _address);
         tc.grantRole(tc.EXECUTOR_ROLE(), _address);
         tc.grantRole(tc.CANCELLER_ROLE(), _address);
-        tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), msg.sender);
+        tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), deployer);
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](1);
-        _safeConfigs[0] = SafeConfig({ safe: Constants.ARBITRUM_TEST_MULTISIG_FINAL3, requiredSignatures: 3 });
+        _safeConfigs[0] = SafeConfig({ safe: Constants.ARBITRUM_TEST_MULTISIG_FINAL4, requiredSignatures: 3 });
 
         (
             address _addressOmega,

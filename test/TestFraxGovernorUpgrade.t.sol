@@ -12,7 +12,7 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
     function setUp() public override {
         super.setUp();
 
-        (address payable _timelockController, , ) = deployTimelockController();
+        (address payable _timelockController, , ) = deployTimelockController(address(this));
         timelockControllerUpgrade = TimelockController(_timelockController);
 
         (address payable _fraxGovernorAlpha, , ) = deployFraxGovernorAlpha(
@@ -22,12 +22,10 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
         );
         fraxGovernorAlphaUpgrade = IFraxGovernorAlpha(_fraxGovernorAlpha);
 
-        vm.startPrank(msg.sender);
         timelockControllerUpgrade.grantRole(timelockControllerUpgrade.PROPOSER_ROLE(), _fraxGovernorAlpha);
         timelockControllerUpgrade.grantRole(timelockControllerUpgrade.EXECUTOR_ROLE(), _fraxGovernorAlpha);
         timelockControllerUpgrade.grantRole(timelockControllerUpgrade.CANCELLER_ROLE(), _fraxGovernorAlpha);
-        timelockControllerUpgrade.renounceRole(timelockControllerUpgrade.TIMELOCK_ADMIN_ROLE(), msg.sender);
-        vm.stopPrank();
+        timelockControllerUpgrade.renounceRole(timelockControllerUpgrade.TIMELOCK_ADMIN_ROLE(), address(this));
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](1);
         _safeConfigs[0] = SafeConfig({ safe: address(multisig), requiredSignatures: 3 });

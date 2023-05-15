@@ -17,8 +17,9 @@ optimizer_runs = 10_000
 bytecode_hash = "none"
 # Contracts to track with --gas-report
 gas_reports = ["FraxGovernorAlpha", "FraxGovernorOmega", "VeFxsVotingDelegation", "FraxGuard"]
-# manually set evm version due to foundry bug
+# EVM version
 evm_version = "london"
+# Version to compile with
 solc_version = "0.8.19"
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config

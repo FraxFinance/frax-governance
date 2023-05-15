@@ -101,7 +101,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         (address _veFxsVotingDelegation, , ) = deployVeFxsVotingDelegation(_mockVeFxs);
         veFxsVotingDelegation = IVeFxsVotingDelegation(_veFxsVotingDelegation);
 
-        (address payable _timelockController, , ) = deployTimelockController();
+        (address payable _timelockController, , ) = deployTimelockController(address(this));
         timelockController = TimelockController(_timelockController);
 
         (address payable _fraxGovernorAlpha, , ) = deployFraxGovernorAlpha(
@@ -111,12 +111,10 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         );
         fraxGovernorAlpha = IFraxGovernorAlpha(_fraxGovernorAlpha);
 
-        vm.startPrank(msg.sender);
         timelockController.grantRole(timelockController.PROPOSER_ROLE(), _fraxGovernorAlpha);
         timelockController.grantRole(timelockController.EXECUTOR_ROLE(), _fraxGovernorAlpha);
         timelockController.grantRole(timelockController.CANCELLER_ROLE(), _fraxGovernorAlpha);
-        timelockController.renounceRole(timelockController.TIMELOCK_ADMIN_ROLE(), msg.sender);
-        vm.stopPrank();
+        timelockController.renounceRole(timelockController.TIMELOCK_ADMIN_ROLE(), address(this));
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](2);
         _safeConfigs[0] = SafeConfig({ safe: address(multisig), requiredSignatures: 3 });

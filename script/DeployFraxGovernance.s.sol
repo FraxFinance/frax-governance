@@ -22,13 +22,12 @@ function deployVeFxsVotingDelegation(
     _address = payable(address(new VeFxsVotingDelegation(_veFxs)));
 }
 
-function deployTimelockController()
-    returns (address payable _address, bytes memory _constructorParams, string memory _contractName)
-{
+function deployTimelockController(
+    address admin
+) returns (address payable _address, bytes memory _constructorParams, string memory _contractName) {
     uint256 minDelay = 1 days;
     address[] memory proposers = new address[](0);
     address[] memory executors = new address[](0);
-    address admin = msg.sender;
     _constructorParams = abi.encode(minDelay, proposers, executors, admin);
     _contractName = "TimelockController";
     _address = payable(address(new TimelockController(minDelay, proposers, executors, admin)));
@@ -101,7 +100,9 @@ contract DeployFraxGovernance is BaseScript {
         console.logBytes(_constructorParamsVoting);
         console.log("_addressVoting:", _addressVoting);
 
-        (address payable _addressTimelock, bytes memory _constructorParamsTimelock, ) = deployTimelockController();
+        (address payable _addressTimelock, bytes memory _constructorParamsTimelock, ) = deployTimelockController(
+            deployer
+        );
         console.log("_constructorParamsTimelock:", string(abi.encode(_constructorParamsTimelock)));
         console.logBytes(_constructorParamsTimelock);
         console.log("_addressTimelock:", _addressTimelock);
@@ -120,7 +121,7 @@ contract DeployFraxGovernance is BaseScript {
         tc.grantRole(tc.PROPOSER_ROLE(), _address);
         tc.grantRole(tc.EXECUTOR_ROLE(), _address);
         tc.grantRole(tc.CANCELLER_ROLE(), _address);
-        tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), msg.sender);
+        tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), deployer);
 
         SafeConfig[] memory _safeConfigs = new SafeConfig[](2);
         //        _safeConfigs[0] = SafeConfig({safe: address(0), requiredSignatures: 3}); //TODO: prod values
