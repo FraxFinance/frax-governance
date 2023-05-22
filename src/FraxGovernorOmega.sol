@@ -184,58 +184,27 @@ contract FraxGovernorOmega is FraxGovernorBase {
         });
     }
 
-    /// @notice The ```propose``` function is similar to OpenZeppelin's ```propose()``` with minor changes
-    /// @dev Changes include: Forbidding targets that are allowlisted Gnosis Safes
-    /// @return proposalId Proposal ID
+    /// @notice The ```propose``` function reverts when called
+    /// @dev Gnosis Safe owners should sign a Gnosis Transaction and then it can be proposed using ```addTransaction()```
+    /// @dev Cannot recover assets accidentally sent to this contract
     function propose(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        string memory description
-    ) public override returns (uint256 proposalId) {
-        _requireSenderAboveProposalThreshold();
-
-        for (uint256 i = 0; i < targets.length; ++i) {
-            address target = targets[i];
-            // Disallow allowlisted safes because Omega would be able to call safe.approveHash() outside of the
-            // addTransaction() / execute() / rejectTransaction() flow
-            if ($safeRequiredSignatures[target] != 0) {
-                revert IFraxGovernorOmega.DisallowedTarget(target);
-            }
-        }
-
-        proposalId = _propose({ targets: targets, values: values, calldatas: calldatas, description: description });
+        address[] memory, // targets
+        uint256[] memory, // values
+        bytes[] memory, // calldatas
+        string memory // description
+    ) public pure override returns (uint256) {
+        revert IFraxGovernorOmega.CannotPropose();
     }
 
-    /// @notice The ```cancel``` function is similar to OpenZeppelin's ```cancel()``` with minor changes
-    /// @dev Changes include: Forbidding cancellation of optimistic proposals since ```addTransaction()``` is permissionless
+    /// @notice The ```cancel``` function reverts when called
     /// @dev Optimistic proposals can be cancelled by Frax Team using ```abortTransaction()```
-    /// @return proposalId Proposal ID
     function cancel(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        bytes32 descriptionHash
-    ) public override returns (uint256 proposalId) {
-        if (
-            $optimisticProposalIdToTxHash[
-                hashProposal({
-                    targets: targets,
-                    values: values,
-                    calldatas: calldatas,
-                    descriptionHash: descriptionHash
-                })
-            ] != 0
-        ) {
-            revert IFraxGovernorOmega.CannotCancelOptimisticTransaction();
-        }
-
-        proposalId = super.cancel({
-            targets: targets,
-            values: values,
-            calldatas: calldatas,
-            descriptionHash: descriptionHash
-        });
+        address[] memory, // targets
+        uint256[] memory, // values
+        bytes[] memory, // calldatas
+        bytes32 // descriptionHash
+    ) public pure override returns (uint256) {
+        revert IFraxGovernorOmega.CannotCancelOptimisticTransaction();
     }
 
     /// @notice The ```addTransaction``` function creates optimistic proposals that correspond to a Gnosis Safe Transaction that was initiated by the Frax Team
@@ -557,20 +526,10 @@ contract FraxGovernorOmega is FraxGovernorBase {
         }
 
         // Optimistic proposal with addTransaction()
-        if ($optimisticProposalIdToTxHash[proposalId] != 0) {
-            if (_quorumReached(proposalId) && _optimisticVoteDefeated(proposalId)) {
-                return ProposalState.Defeated;
-            } else {
-                return ProposalState.Succeeded;
-            }
-
-            // Regular proposal with propose()
+        if (_quorumReached(proposalId) && _optimisticVoteDefeated(proposalId)) {
+            return ProposalState.Defeated;
         } else {
-            if (_quorumReached(proposalId) && _voteSucceeded(proposalId)) {
-                return ProposalState.Succeeded;
-            } else {
-                return ProposalState.Defeated;
-            }
+            return ProposalState.Succeeded;
         }
     }
 }

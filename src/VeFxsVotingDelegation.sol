@@ -57,20 +57,16 @@ contract VeFxsVotingDelegation is EIP712, IERC5805 {
     IVeFxs public immutable VE_FXS;
 
     /// @notice Nonces needed for delegations by signature
-    //mapping(address signer => uint256 nonce) public $nonces;
-    mapping(address => uint256) public $nonces;
+    mapping(address signer => uint256 nonce) public $nonces;
 
     /// @notice Mapping from delegator to delegate including additional parameters for our weight calculations.
-    //mapping(address delegator => Delegation delegate) public delegations;
-    mapping(address => IVeFxsVotingDelegation.Delegation) public $delegations;
+    mapping(address delegator => IVeFxsVotingDelegation.Delegation delegate) public $delegations;
 
     /// @notice Mapping from delegate to their checkpoints. Checkpoints correspond to daily rounded dates of delegation.
-    //mapping(address delegate => DelegateCheckpoint[]) public checkpoints;
-    mapping(address => IVeFxsVotingDelegation.DelegateCheckpoint[]) public $delegateCheckpoints;
+    mapping(address delegate => IVeFxsVotingDelegation.DelegateCheckpoint[]) public $delegateCheckpoints;
 
     /// @notice Mapping from delegate to weekly rounded time of expiry to the aggregated values at time of expiration. Mirrors veFXS expiration.
-    //mapping(address delegate => mapping(uint256 week => Expiration)) public expirations;
-    mapping(address => mapping(uint256 => IVeFxsVotingDelegation.Expiration)) public $expiredDelegations;
+    mapping(address delegate => mapping(uint256 week => IVeFxsVotingDelegation.Expiration)) public $expiredDelegations;
 
     /// @notice The ```constructor``` function is called on deployment
     /// @param veFxs Address of veFXS contract

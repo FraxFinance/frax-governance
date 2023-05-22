@@ -54,12 +54,7 @@ interface IFraxGovernorOmega {
         bytes[] memory signatures
     ) external returns (uint256[] memory optimisticProposalIds);
 
-    function cancel(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        bytes32 descriptionHash
-    ) external returns (uint256 proposalId);
+    function cancel(address[] memory, uint256[] memory, bytes[] memory, bytes32) external pure returns (uint256);
 
     function castVote(uint256 proposalId, uint8 support) external returns (uint256);
 
@@ -153,12 +148,7 @@ interface IFraxGovernorOmega {
         uint256
     ) external view returns (address proposer, uint40 voteStart, uint40 voteEnd, bool executed, bool canceled);
 
-    function propose(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        string memory description
-    ) external returns (uint256 proposalId);
+    function propose(address[] memory, uint256[] memory, bytes[] memory, string memory) external pure returns (uint256);
 
     function quorum(uint256 timepoint) external view returns (uint256 quorumAtTimepoint);
 
@@ -209,6 +199,7 @@ interface IFraxGovernorOmega {
     function votingPeriod() external view returns (uint256);
 
     error BadBatchArgs();
+    error CannotPropose();
     error CannotCancelOptimisticTransaction();
     error DelegateWithAlpha();
     error DisallowedTarget(address target);

@@ -12,7 +12,7 @@ via-ir = false
 # Enables or disables the optimizer
 optimizer = true
 # The number of optimizer runs
-optimizer_runs = 10_000
+optimizer_runs = 20_000
 # Improves verification
 bytecode_hash = "none"
 # Contracts to track with --gas-report
@@ -21,6 +21,8 @@ gas_reports = ["FraxGovernorAlpha", "FraxGovernorOmega", "VeFxsVotingDelegation"
 evm_version = "london"
 # Version to compile with
 solc_version = "0.8.19"
+# Whether to append the metadata hash to the bytecode
+cbor_metadata = false
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
 

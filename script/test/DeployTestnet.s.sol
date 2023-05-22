@@ -13,8 +13,7 @@ import {
     deployVeFxsVotingDelegation,
     SafeConfig
 } from "script/DeployFraxGovernance.s.sol";
-import "test/VyperDeployer.sol";
-import "test/FxsMock.sol";
+import "test/mock/FxsMock.sol";
 
 contract DeployTestnet is BaseScript {
     function run()

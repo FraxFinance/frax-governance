@@ -1,5 +1,5 @@
 {
-  "name": "frax-governance-dev",
+  "name": "frax-governance",
   "version": "1.0.0",
   "description": "To run tests you need to create a virtual env and install vyper 0.2.12. This is because we're using VyperDeployer, which will deploy the actual veFXS.vy contract.",
   "main": "index.js",

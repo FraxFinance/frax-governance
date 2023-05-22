@@ -16,7 +16,11 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
     // Assert that this account has weight themselves when they haven't delegated
     function testNoDelegationHasWeight() public {
-        assertEq(veFxsVotingDelegation.getVotes(accounts[0].account), veFxs.balanceOf(accounts[0].account));
+        assertEq(
+            veFxsVotingDelegation.getVotes(accounts[0].account),
+            veFxs.balanceOf(accounts[0].account),
+            "getVotes and veFXS balance are identical"
+        );
     }
 
     // delegate() reverts when the lock is expired
@@ -32,7 +36,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
     // Account should have no weight at the end of their veFXS lock
     function testNoWeightAfterLockExpires() public {
         vm.warp(veFxs.locked(accounts[0].account).end);
-        assertEq(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
+        assertEq(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0, "0 weight once lock expires");
     }
 
     // Test all cases for veFxsVotingDelegation.calculateExpiredDelegations();
@@ -61,18 +65,17 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         uint256 weight = veFxsVotingDelegation.getVotes(bob);
 
-        //total expired FXS != 0
+        // total expired FXS != 0
         veFxsVotingDelegation.writeNewCheckpointForExpiredDelegations(bob);
-        // same before and after writing this checkpoint
-        assertEq(weight, veFxsVotingDelegation.getVotes(bob));
+        assertEq(weight, veFxsVotingDelegation.getVotes(bob), "same before and after writing this checkpoint");
 
         vm.warp(veFxs.locked(accounts[0].account).end - 1);
 
-        assertGt(veFxsVotingDelegation.getVotes(bob), 0);
+        assertGt(veFxsVotingDelegation.getVotes(bob), 0, "bob has voting weight");
 
         vm.warp(veFxs.locked(accounts[0].account).end);
 
-        assertEq(0, veFxsVotingDelegation.getVotes(bob));
+        assertEq(0, veFxsVotingDelegation.getVotes(bob), "0 weight now that lock expired");
 
         vm.stopPrank();
     }
@@ -82,13 +85,13 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
 
-        assertEq(bob, veFxsVotingDelegation.delegates(accounts[0].account));
+        assertEq(bob, veFxsVotingDelegation.delegates(accounts[0].account), "account delegated to bob");
 
         IVeFxsVotingDelegation.DelegateCheckpoint memory dc = veFxsVotingDelegation.getCheckpoint(bob, 0);
-        assertEq(dc.timestamp, ((block.timestamp / 1 days) * 1 days) + 1 days);
-        assertEq(dc.normalizedBias, 1_431_643_835_616_437_159_539_200);
-        assertEq(dc.normalizedSlope, 792_744_799_594_114);
-        assertEq(dc.totalFxs, 100_000e18);
+        assertEq(dc.timestamp, ((block.timestamp / 1 days) * 1 days) + 1 days, "timestamp is next epoch");
+        assertEq(dc.normalizedBias, 1_431_643_835_616_437_159_539_200, "Account's bias");
+        assertEq(dc.normalizedSlope, 792_744_799_594_114, "Account's normalized slope");
+        assertEq(dc.totalFxs, 100_000e18, "Total amount of udnerlying FXSdelegated");
     }
 
     // delegates() works
@@ -96,7 +99,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
 
-        assertEq(bob, veFxsVotingDelegation.delegates(accounts[0].account));
+        assertEq(bob, veFxsVotingDelegation.delegates(accounts[0].account), "Bob is the delegate");
     }
 
     // Revert delegateBySig when expiry is in the past
@@ -137,9 +140,8 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         vm.expectRevert(IVeFxsVotingDelegation.InvalidSignatureNonce.selector);
         veFxsVotingDelegation.delegateBySig(bill, 0, block.timestamp, v, r, s);
 
-        // assert nonce incremented and delegate for signer is who we said
-        assertEq(1, veFxsVotingDelegation.$nonces(eoaOwners[0].account));
-        assertEq(bill, veFxsVotingDelegation.delegates(eoaOwners[0].account));
+        assertEq(1, veFxsVotingDelegation.$nonces(eoaOwners[0].account), "signature nonce incremented");
+        assertEq(bill, veFxsVotingDelegation.delegates(eoaOwners[0].account), "bill is now the delegate");
     }
 
     // Make sure only the final delegate gets weight when delegator delegates twice during the same epoch
@@ -151,23 +153,27 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         veFxsVotingDelegation.delegate(alice);
         vm.stopPrank();
 
-        assertEq(weight, veFxsVotingDelegation.getVotes(accounts[0].account));
-        assertEq(0, veFxsVotingDelegation.getVotes(bill));
-        assertEq(0, veFxsVotingDelegation.getVotes(alice));
+        assertEq(
+            weight,
+            veFxsVotingDelegation.getVotes(accounts[0].account),
+            "Account still has weight before delegation epoch"
+        );
+        assertEq(0, veFxsVotingDelegation.getVotes(bill), "No weight ever, account immediately redelegated to alice");
+        assertEq(0, veFxsVotingDelegation.getVotes(alice), "No weight until epoch");
 
         vm.warp(((block.timestamp / 1 days) * 1 days) + 1 days - 1);
 
-        assertGt(weight, veFxsVotingDelegation.getVotes(accounts[0].account));
-        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account), 0);
-        assertEq(0, veFxsVotingDelegation.getVotes(bill));
-        assertEq(0, veFxsVotingDelegation.getVotes(alice));
+        assertGt(weight, veFxsVotingDelegation.getVotes(accounts[0].account), "Voting power decayed slightly");
+        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account), 0, "Account still has voting power");
+        assertEq(0, veFxsVotingDelegation.getVotes(bill), "No weight ever, account immediately redelegated to alice");
+        assertEq(0, veFxsVotingDelegation.getVotes(alice), "No weight until epoch");
 
         vm.warp(block.timestamp + 1);
 
-        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account));
-        assertEq(0, veFxsVotingDelegation.getVotes(bill));
-        assertGt(weight, veFxsVotingDelegation.getVotes(alice));
-        assertGt(veFxsVotingDelegation.getVotes(alice), 0);
+        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account), "Account no longer has voting weight");
+        assertEq(0, veFxsVotingDelegation.getVotes(bill), "No weight ever, account immediately redelegated to alice");
+        assertGt(weight, veFxsVotingDelegation.getVotes(alice), "Alice has less weight than original because of decay");
+        assertGt(veFxsVotingDelegation.getVotes(alice), 0, "Alice has weight");
     }
 
     // Test transition phase between calling delegate() and delegation going into effect at the next epoch.
@@ -184,17 +190,24 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         emit DelegateChanged(accounts[0].account, address(0), bob);
         veFxsVotingDelegation.delegate(bob);
 
-        // not in effect yet
-        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
-        assertEq(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
+        assertGt(
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            0,
+            "Account still has weight until epoch"
+        );
+        assertEq(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0, "Delegation not in effect yet");
 
         uint256 delegationStarts = ((block.timestamp / 1 days) * 1 days) + 1 days;
 
         vm.warp(delegationStarts);
 
         // first delegation in effect
-        assertEq(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
+        assertEq(
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            0,
+            "Account delegated all weight"
+        );
+        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0, "Bob has delegated weight");
 
         vm.expectEmit(true, true, true, true);
         emit DelegateVotesChanged(
@@ -207,14 +220,22 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         veFxsVotingDelegation.delegate(accounts[0].account);
 
         // first delegation still in effect until next epoch
-        assertEq(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
+        assertEq(
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            0,
+            "Account still delegate until next epoch"
+        );
+        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0, "Bob still has weight until next epoch");
 
         vm.warp(delegationStarts + 1 days);
 
         // undelegate in effect
-        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
-        assertEq(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
+        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0, "Account has weight back");
+        assertEq(
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            0,
+            "Bob no longer has weight, no longer delegated to"
+        );
         vm.stopPrank();
     }
 
@@ -227,7 +248,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         vm.warp(delegationStarts);
 
         uint256 weight = veFxsVotingDelegation.getVotes(bob, block.timestamp);
-        assertGt(weight, 0);
+        assertGt(weight, 0, "Bob has delegated weight");
 
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
@@ -235,12 +256,16 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         uint256 delegationStarts2 = delegationStarts + 1 days;
         vm.warp(delegationStarts2);
         // delegating again does not add extra weight
-        assertGt(weight, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertGt(
+            weight,
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            "Bob's weight didnt change when delegated to again"
+        );
     }
 
     // Ensure delegator doesn't get voting power when switching delegation from account A to account B
     function testNoDoubleVotingWeight() public {
-        // delegate to A
+        // delegate to Bob
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
 
@@ -248,27 +273,37 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         vm.warp(delegationStarts + 1);
 
-        // move delegation to B
+        // move delegation to Bill
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bill);
 
         vm.warp(delegationStarts + 1 days - 1);
 
-        // Bob still has voting power until next epoch
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
-        // Bill should still have no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(bill, block.timestamp));
-        // Delegator should still have no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp));
+        assertGt(
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            0,
+            "Bob still has voting power until next epoch"
+        );
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(bill, block.timestamp),
+            "Bill should still have no voting power until next epoch"
+        );
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            "Delegator should still have no voting power until next epoch"
+        );
 
         vm.warp(delegationStarts + 1 days);
 
-        // Bob should have no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp));
-        // Bill should now have voting power
-        assertGt(veFxsVotingDelegation.getVotes(bill, block.timestamp), 0);
-        // Delegator should still have no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp));
+        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp), "Bob has no voting power");
+        assertGt(veFxsVotingDelegation.getVotes(bill, block.timestamp), 0, "Bill has delegator's weight now");
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            "Delegator still has no voting power"
+        );
     }
 
     // Voting weight works as expected including self delegations
@@ -285,33 +320,41 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(accounts[0].account);
 
-        // Bob should have voting power
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
-        // Delegator should have no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp));
+        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0, "Bob has voting power until next epoch");
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            "Delegator has no voting power until next epoch"
+        );
 
         vm.warp(delegationStarts + 1 days);
 
-        // Delegator has voting power
-        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
-        // Bob no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertGt(
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            0,
+            "Delegator has voting power back"
+        );
+        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp), "Bob no voting power");
 
         // delegate to A
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
 
-        // Delegator has voting power
-        assertGt(veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp), 0);
-        // Bob no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertGt(
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            0,
+            "Delegator has voting power until next epoch"
+        );
+        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp), "Bob no voting power until next epoch");
 
         vm.warp(delegationStarts + 2 days);
 
-        // Bob should have voting power
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
-        // Delegator should have no voting power
-        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp));
+        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0, "Bob should have voting power");
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            "Delegator should have no voting power"
+        );
     }
 
     // User can increase their veFXS lock time and the math is the same as a new lock with same duration and amount
@@ -352,36 +395,46 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         uint256 lockEnds2 = veFxs.locked(accounts[0].account).end;
 
-        // Bob's weight hasn't changed yet
-        assertEq(weight2, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertEq(weight2, veFxsVotingDelegation.getVotes(bob, block.timestamp), "Bob's weight hasn't changed yet");
 
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
 
-        // Bob's weight still hasn't changed yet, won;t change until next epoch
-        assertEq(weight2, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertEq(
+            weight2,
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            "Bob's weight still hasn't changed yet, won't change until next epoch"
+        );
 
         uint256 delegationStarts2 = ((block.timestamp / 1 days) * 1 days) + 1 days;
 
         vm.warp(delegationStarts2);
 
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), weight2);
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), weight);
+        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), weight2, "2 delegates weight is larger than 1");
+        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), weight, "2 delegates weight is larger than 1");
 
         vm.warp(lockEnds);
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
+        assertGt(
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            0,
+            "Still has voting weight when first delegate's lock expires"
+        );
         vm.warp(lockEnds2 - 1);
-        assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
-        // math is equivalent to someone else locking same amount, same duration, at same instant
+        assertGt(
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            0,
+            "Still has voting weight right before second delegate's lock expires"
+        );
         assertEq(
             veFxsVotingDelegation.getVotes(bob, block.timestamp),
-            veFxsVotingDelegation.getVotes(alice, block.timestamp)
+            veFxsVotingDelegation.getVotes(alice, block.timestamp),
+            "equivalent to someone else locking same amount, same duration, at same instant"
         );
         vm.warp(lockEnds2);
-        assertEq(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0);
+        assertEq(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0, "No weight when all locks expired");
     }
 
-    // Delegating back to yourself works as expected factoring in enxpirations
+    // Delegating back to yourself works as expected factoring in expirations
     function testExpirationDelegationDoesntDoubleSubtract() public {
         hoax(accounts[1].account);
         veFxsVotingDelegation.delegate(bob);
@@ -390,23 +443,27 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         vm.warp(expiration - 1 days);
 
-        //account 1 write the expiration checkpoint
+        // account 1 write the expiration checkpoint
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
 
         hoax(accounts[1].account, accounts[1].account);
         veFxs.increase_unlock_time(block.timestamp + 365 days);
 
-        //expiration and checkpoint in effect
+        // expiration and checkpoint in effect
         vm.warp(expiration);
 
         hoax(accounts[1].account);
         veFxsVotingDelegation.delegate(accounts[1].account);
 
-        //self delegation now in effect
+        // self delegation now in effect
         vm.warp(expiration + 1 days);
 
-        assertEq(veFxsVotingDelegation.getVotes(bob), veFxs.balanceOf(accounts[0].account));
+        assertEq(
+            veFxsVotingDelegation.getVotes(bob),
+            veFxs.balanceOf(accounts[0].account),
+            "Self delegation is equivalent to veFXS balance"
+        );
     }
 
     // Testing for a bug that was fixed. Essentially when delegator A moves their delegation from B -> C after their
@@ -434,8 +491,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         hoax(accounts[1].account);
         veFxsVotingDelegation.delegate(bill);
 
-        // B "votes" on prop with weight that they shouldn't have
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, expiration + 2));
+        assertEq(0, veFxsVotingDelegation.getVotes(bob, expiration + 2), "Bob has no weight");
     }
 
     // Fuzz test for proper voting weights with delegations
@@ -449,54 +505,81 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         uint256 weight = veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp);
         uint256 weightA = veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp);
 
-        assertGt(weight, 0);
-        assertGt(weightA, 0);
+        assertGt(weight, 0, "Has voting weight");
+        assertGt(weightA, 0, "Has voting weight");
 
         hoax(accounts[0].account);
         veFxsVotingDelegation.delegate(bob);
         hoax(accounts[1].account);
         veFxsVotingDelegation.delegate(bob);
 
-        // original still has weight before delegation
-        assertLe(weight, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp - 1));
-        // original still has weight until next checkpoint time
-        assertEq(weight, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp));
+        assertLe(
+            weight,
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp - 1),
+            "accounts[0] still has weight before delegation"
+        );
+        assertEq(
+            weight,
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            "accounts[0] still has weight until next checkpoint time"
+        );
 
-        // original still has weight before delegation
-        assertLe(weightA, veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp - 1));
-        // original still has weight until next checkpoint time
-        assertEq(weightA, veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp));
+        assertLe(
+            weightA,
+            veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp - 1),
+            "accounts[1] still has weight before delegation"
+        );
+        assertEq(
+            weightA,
+            veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp),
+            "accounts[1] still has weight until next checkpoint time"
+        );
 
-        // delegatee has no weight before delegation
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp - 1));
-        // delegatee has no weight until the next checkpoint time
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(bob, block.timestamp - 1),
+            "delegate has no weight before delegation"
+        );
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            "delegate has no weight until the next checkpoint time"
+        );
 
         vm.warp(tsRoundedToCheckpoint - 1);
 
         // original still has weight until the next checkpoint Time
         uint256 weight2 = veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp);
-        assertGt(weight2, 0);
-        assertGe(weight, weight2);
+        assertGt(weight2, 0, "accounts[0] has weight until delegation takes effect");
+        assertGe(weight, weight2, "weight has slightly decayed");
 
         uint256 weightA2 = veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp);
-        assertGt(weightA2, 0);
-        assertGe(weightA, weightA2);
+        assertGt(weightA2, 0, "accounts[1] has weight until delegation takes effect");
+        assertGe(weightA, weightA2, "weight has slightly decayed");
 
-        //delegatee has no weight until the next checkpoint time
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            "delegate has no weight until the next checkpoint time"
+        );
 
         vm.warp(tsRoundedToCheckpoint);
 
-        // original's delegation hits in so they have no weight
-        assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp));
-        // original's delegation hits in so they have no weight
-        assertEq(0, veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp));
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp),
+            "accounts[0]'s delegation kicks in so they have no weight"
+        );
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp),
+            "accounts[1]'s delegation kicks in so they have no weight"
+        );
 
         uint256 bobWeight = veFxsVotingDelegation.getVotes(bob, block.timestamp);
         // original's delegation hits in so delegatee has their weight
-        assertGt(bobWeight, weight2);
-        assertGe(weight2 + weightA2, bobWeight);
+        assertGt(bobWeight, weight2, "Bob has both delegator's weight");
+        assertGe(weight2 + weightA2, bobWeight, "Weight has decayed slightly");
     }
 
     // Fuzz asserts that our delegated weight calculations == veFxs.balanceOf() at all time points before lock expiry.
@@ -506,7 +589,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         hoax(accounts[1].account);
         veFxsVotingDelegation.delegate(bob);
 
-        ts = bound(ts, veFxs.locked(accounts[1].account).end, veFxs.locked(accounts[0].account).end - 1); //lock expiry
+        ts = bound(ts, veFxs.locked(accounts[1].account).end, veFxs.locked(accounts[0].account).end - 1); // lock expiry
 
         vm.warp(ts);
 
@@ -514,12 +597,12 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         uint256 veFxsBalance = veFxs.balanceOf(accounts[0].account, block.timestamp);
         uint256 weightA = veFxsVotingDelegation.getVotes(accounts[1].account, block.timestamp);
         uint256 delegateWeight = veFxsVotingDelegation.getVotes(bob, block.timestamp);
-        assertEq(weight, 0);
-        assertEq(weightA, 0);
-        // veFxs.balanceOf will return the amount of FXS you have when your lock expires. We want it to go to zero,
+        assertEq(weight, 0, "Delegator has no weight");
+        assertEq(weightA, 0, "Delegator has no weight");
+        // veFxs.balanceOf() will return the amount of FXS you have when your lock expires. We want it to go to zero,
         // because a user could lock FXS, delegate, time passes, lock expires, withdraw FXS but the delegate would
         // still have voting power to mitigate this, delegated voting power goes to 0 when the lock expires.
-        assertEq(delegateWeight, veFxsBalance);
+        assertEq(delegateWeight, veFxsBalance, "delegate's weight == veFXS balance");
     }
 
     // Fuzz asserts that our delegated weight calculations == veFxs.balanceOf() at all time points before lock expiry.
@@ -529,8 +612,8 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         deal(address(fxs), bill, amount);
         deal(address(fxs), alice, amount);
-        assertEq(fxs.balanceOf(bill), amount);
-        assertEq(fxs.balanceOf(alice), amount);
+        assertEq(fxs.balanceOf(bill), amount, "Has FXS");
+        assertEq(fxs.balanceOf(alice), amount, "Has FXS");
 
         vm.startPrank(bill, bill);
         fxs.increaseAllowance(address(veFxs), amount);
@@ -558,9 +641,9 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         uint256 weightA = veFxsVotingDelegation.getVotes(alice, block.timestamp);
         uint256 veFxsBalanceA = veFxs.balanceOf(alice, block.timestamp);
         uint256 delegateWeight = veFxsVotingDelegation.getVotes(bob, block.timestamp);
-        assertEq(weight, 0);
-        assertEq(weightA, 0);
-        assertEq(veFxsBalance + veFxsBalanceA, delegateWeight);
+        assertEq(weight, 0, "Delegator has no weight");
+        assertEq(weightA, 0, "Delegator has no weight");
+        assertEq(veFxsBalance + veFxsBalanceA, delegateWeight, "delegate's weight == veFXS balance of both delegators");
     }
 
     // Fuzz asserts all weight expired at various time points following veFXS lock expiry
@@ -569,8 +652,8 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         deal(address(fxs), bill, amount);
         deal(address(fxs), alice, amount);
-        assertEq(fxs.balanceOf(bill), amount);
-        assertEq(fxs.balanceOf(alice), amount);
+        assertEq(fxs.balanceOf(bill), amount, "Has FXS");
+        assertEq(fxs.balanceOf(alice), amount, "Has FXS");
 
         vm.startPrank(bill, bill);
         fxs.increaseAllowance(address(veFxs), amount);
@@ -594,9 +677,9 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         uint256 weight = veFxsVotingDelegation.getVotes(bill, block.timestamp);
         uint256 weightA = veFxsVotingDelegation.getVotes(alice, block.timestamp);
         uint256 delegateWeight = veFxsVotingDelegation.getVotes(bob, block.timestamp);
-        assertEq(weight, 0);
-        assertEq(weightA, 0);
-        assertEq(delegateWeight, 0);
+        assertEq(weight, 0, "Delegator has no weight after lock expires");
+        assertEq(weightA, 0, "Delegator has no weight after lock expires");
+        assertEq(delegateWeight, 0, "Delegate has no weight after lock expires");
     }
 
     // Fuzz expirations with various amounts
@@ -630,11 +713,15 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         veFxsVotingDelegation.delegate(bob);
         vm.stopPrank();
 
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertEq(
+            0,
+            veFxsVotingDelegation.getVotes(bob, block.timestamp),
+            "Delegate has no weight until checkpoint epoch"
+        );
 
         vm.warp(((end / 1 days) * 1 days) + 1 days);
         // test expiration worked correctly
-        assertEq(weight, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertEq(weight, veFxsVotingDelegation.getVotes(bob, block.timestamp), "First delegation expires as expected");
     }
 
     // Fuzz tests expirations with different amounts and different lock expiry
@@ -646,8 +733,8 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         deal(address(fxs), bill, amount);
         deal(address(fxs), alice, amount2);
-        assertEq(fxs.balanceOf(bill), amount);
-        assertEq(fxs.balanceOf(alice), amount2);
+        assertEq(fxs.balanceOf(bill), amount, "Has FXS");
+        assertEq(fxs.balanceOf(alice), amount2, "Has FXS");
 
         vm.startPrank(bill, bill);
         fxs.increaseAllowance(address(veFxs), amount);
@@ -672,12 +759,12 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
 
         vm.warp(billEnd < aliceEnd ? billEnd : aliceEnd);
         uint256 weight2 = veFxsVotingDelegation.getVotes(bob, block.timestamp);
-        assertGt(weight, weight2);
+        assertGt(weight, weight2, "Some weight expired");
 
         vm.warp(billEnd > aliceEnd ? billEnd : aliceEnd);
-        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertEq(0, veFxsVotingDelegation.getVotes(bob, block.timestamp), "No longer has voting weight");
         // equal in case they expire at the same time
-        assertGe(weight2, veFxsVotingDelegation.getVotes(bob, block.timestamp));
+        assertGe(weight2, veFxsVotingDelegation.getVotes(bob, block.timestamp), "More weight has expired");
     }
 
     // Testing for overflow of packed structs
@@ -705,18 +792,22 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
             address account = address(uint160(i));
             totalVeFxs += veFxs.balanceOf(account, block.timestamp);
         }
-        assertEq(totalVeFxs, veFxsVotingDelegation.getVotes(delegate, block.timestamp));
+        assertEq(
+            totalVeFxs,
+            veFxsVotingDelegation.getVotes(delegate, block.timestamp),
+            "total delegated voting weight is equal to total veFXS balances"
+        );
 
         uint256 lockEnd = veFxs.locked(address(uint160(100))).end;
         (uint256 bias, uint128 fxs, uint128 slope) = veFxsVotingDelegation.$expiredDelegations(delegate, lockEnd);
-        assertLt(bias, type(uint96).max);
-        assertLt(fxs, type(uint96).max);
-        assertLt(slope, type(uint64).max);
+        assertLt(bias, type(uint96).max, "For communicating intent of test");
+        assertLt(fxs, type(uint96).max, "For communicating intent of test");
+        assertLt(slope, type(uint64).max, "For communicating intent of test");
 
         vm.warp(lockEnd);
 
         // expirations are properly accounted for
-        assertEq(0, veFxsVotingDelegation.getVotes(delegate, block.timestamp));
+        assertEq(0, veFxsVotingDelegation.getVotes(delegate, block.timestamp), "Everything expired properly");
     }
 
     // Create a ton of random checkpoints
@@ -725,8 +816,6 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
         timestamp = bound(timestamp, 604_800, 126_748_800); // startTs, endTs
 
         vm.warp(((block.timestamp / 1 days) * 1 days) + 1 days); // 604800
-        //        uint256 startTs = block.timestamp;
-        //        uint256 endTs = startTs + 365 days * 4;
 
         uint256 amount = 10_000e18;
         address delegate = address(uint160(1_000_000));
@@ -744,7 +833,7 @@ contract TestFraxGovernorDelegation is FraxGovernorTestBase {
             // Go forward daysDelta days
             vm.warp(block.timestamp + daysDelta);
 
-            assert(veFxsVotingDelegation.getVotes(delegate, timestamp + daysDelta) >= 0);
+            assertTrue(veFxsVotingDelegation.getVotes(delegate, timestamp + daysDelta) >= 0);
         }
     }
 }

@@ -114,7 +114,11 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
             }
         }
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(proposalId)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(proposalId)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
 
@@ -122,30 +126,33 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
 
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(uint256(IGovernor.ProposalState.Executed), uint256(fraxGovernorAlpha.state(proposalId)));
-
-        // Frax Guard is the new one
         assertEq(
-            address(fraxGuardUpgrade),
-            _bytesToAddress(_safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
+            uint256(IGovernor.ProposalState.Executed),
+            uint256(fraxGovernorAlpha.state(proposalId)),
+            "Proposal state is executed"
         );
 
-        // New Alpha is a module
-        assert(_safe.isModuleEnabled(address(fraxGovernorAlphaUpgrade)));
+        assertEq(
+            address(fraxGuardUpgrade),
+            _bytesToAddress(_safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 })),
+            "New Frax Guard is set"
+        );
 
-        // old Omega not owner
-        assertFalse(_safe.isOwner(address(fraxGovernorOmega)));
+        assertTrue(_safe.isModuleEnabled(address(fraxGovernorAlphaUpgrade)), "New Alpha is a module");
 
-        // new Omega is owner
-        assert(_safe.isOwner(address(fraxGovernorOmegaUpgrade)));
+        assertFalse(_safe.isOwner(address(fraxGovernorOmega)), "Old Omega removed as safe owner");
 
-        // Removed safe from old omega allowlist
-        assertEq(fraxGovernorOmega.$safeRequiredSignatures(address(multisig)), 0);
+        assertTrue(_safe.isOwner(address(fraxGovernorOmegaUpgrade)), "New Omega is safe owner");
 
-        // old alpha removed as module
-        assertFalse(_safe.isModuleEnabled(address(fraxGovernorAlpha)));
+        assertEq(
+            fraxGovernorOmega.$safeRequiredSignatures(address(multisig)),
+            0,
+            "Removed safe from old omega allowlist"
+        );
 
-        assertEq(_safe.getOwners().length, 6);
-        assertEq(_safe.getThreshold(), 4);
+        assertFalse(_safe.isModuleEnabled(address(fraxGovernorAlpha)), "Old Alpha removed as module");
+
+        assertEq(_safe.getOwners().length, 6, "6 total safe owners");
+        assertEq(_safe.getThreshold(), 4, "4 signatures required");
     }
 }

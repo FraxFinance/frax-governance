@@ -13,8 +13,8 @@ import { FraxGovernorAlpha, ConstructorParams } from "../src/FraxGovernorAlpha.s
 import { FraxGovernorOmega, SafeConfig } from "../src/FraxGovernorOmega.sol";
 import "../src/VeFxsVotingDelegation.sol";
 import "../src/FraxGuard.sol";
-import "./FxsMock.sol";
-import "./VyperDeployer.sol";
+import "./mock/FxsMock.sol";
+import "./utils/VyperDeployer.sol";
 import "../src/interfaces/IFraxGovernorAlpha.sol";
 import "../src/interfaces/IFraxGovernorOmega.sol";
 import { FraxGovernorBase } from "../src/FraxGovernorBase.sol";
@@ -26,8 +26,7 @@ import {
     deployVeFxsVotingDelegation,
     SafeConfig
 } from "script/DeployFraxGovernance.s.sol";
-import { deployMockFxs } from "../script/test/DeployTestFxs.s.sol";
-import { deployVeFxs } from "../script/test/DeployTestVeFxs.s.sol";
+import { deployMockFxs, deployVeFxs } from "../script/test/DeployTestFxs.s.sol";
 import { Constants } from "../script/Constants.sol";
 
 contract FraxGovernorTestBase is FraxTest, SafeTestTools {
@@ -152,20 +151,22 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         setupFraxGuard({ _safe: address(multisig), signer: eoaOwners[0].account, _fraxGuard: address(fraxGuard) });
         setupFraxGuard({ _safe: address(multisig2), signer: eoaOwners[0].account, _fraxGuard: address(fraxGuard) });
 
-        assertEq(getSafe(address(multisig)).safe.getOwners().length, 6);
-        assertEq(getSafe(address(multisig)).safe.getThreshold(), 4);
+        assertEq(getSafe(address(multisig)).safe.getOwners().length, 6, "6 total safe owners");
+        assertEq(getSafe(address(multisig)).safe.getThreshold(), 4, "4 signatures required");
         assert(getSafe(address(multisig)).safe.isModuleEnabled(address(timelockController)));
         assertEq(
             address(fraxGuard),
-            _bytesToAddress(getSafe(address(multisig)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
+            _bytesToAddress(getSafe(address(multisig)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 })),
+            "Guard is set"
         );
 
-        assertEq(getSafe(address(multisig2)).safe.getOwners().length, 6);
-        assertEq(getSafe(address(multisig2)).safe.getThreshold(), 4);
+        assertEq(getSafe(address(multisig2)).safe.getOwners().length, 6, "6 total safe owners");
+        assertEq(getSafe(address(multisig2)).safe.getThreshold(), 4, "4 signatures required");
         assert(getSafe(address(multisig2)).safe.isModuleEnabled(address(timelockController)));
         assertEq(
             address(fraxGuard),
-            _bytesToAddress(getSafe(address(multisig2)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 }))
+            _bytesToAddress(getSafe(address(multisig2)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 })),
+            "Guard is set"
         );
 
         uint256 amount = 100_000e18;
@@ -173,7 +174,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         // Give FXS balances to every account
         for (uint256 i = 0; i < accounts.length; ++i) {
             deal(address(fxs), accounts[i].account, amount);
-            assertEq(fxs.balanceOf(accounts[i].account), amount);
+            assertEq(fxs.balanceOf(accounts[i].account), amount, "account gets FXS");
         }
 
         // even distribution of lock time / veFXS balance
@@ -183,10 +184,14 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
             fxs.increaseAllowance(address(veFxs), amount);
             veFxs.create_lock(amount, block.timestamp + (365 days * 4) / (i + 1));
             vm.stopPrank();
-            assertGt(veFxs.balanceOf(account), amount);
+            assertGt(veFxs.balanceOf(account), amount, "veFXS for an account is always equal to or greater than FXS");
         }
 
-        assertGt(veFxs.balanceOf(accounts[0].account), veFxs.balanceOf(accounts[accounts.length - 1].account));
+        assertGt(
+            veFxs.balanceOf(accounts[0].account),
+            veFxs.balanceOf(accounts[accounts.length - 1].account),
+            "Descending veFXS balances"
+        );
 
         vm.warp(block.timestamp + BLOCK_TIME);
         vm.roll(block.number + 1);
@@ -403,7 +408,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         _fraxGovernorOmega.addTransaction(address(_safe), args, generateThreeEOASigs(txHash));
     }
 
-    function createRealVetoTxProposal(
+    function createOptimisticProposal(
         address _safe,
         IFraxGovernorOmega _fraxGovernorOmega,
         address caller,

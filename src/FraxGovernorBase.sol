@@ -47,12 +47,12 @@ abstract contract FraxGovernorBase is GovernorCountingFractional {
     using SafeCast for *;
     using Checkpoints for Checkpoints.Trace224;
 
-    /// @notice Address of the veFXS contract
-    IVeFxs public immutable VE_FXS;
-
     /// @notice Voting delay in number of blocks
     /// @dev only used to look up total veFXS supply on the VE_FXS contract
     uint256 public $votingDelayBlocks;
+
+    /// @notice Address of the veFXS contract
+    IVeFxs public immutable VE_FXS;
 
     /// @notice Checkpoints for short circuit numerator mirroring _quorumNumeratorHistory from GovernorVotesQuorumFraction.sol
     Checkpoints.Trace224 private _$shortCircuitNumeratorHistory;

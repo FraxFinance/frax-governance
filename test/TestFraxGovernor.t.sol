@@ -45,7 +45,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         );
     }
 
-    // Assert that we can individual voting weight in the past
+    // Assert that we can get individual voting weight in the past
     function testGetPastVotes() public {
         vm.warp(block.timestamp + 1 days);
 
@@ -54,7 +54,8 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         assertEq(
             veFxs.balanceOf(accounts[0].account, block.timestamp - 1),
-            veFxsVotingDelegation.getPastVotes(accounts[0].account, block.timestamp - 1)
+            veFxsVotingDelegation.getPastVotes(accounts[0].account, block.timestamp - 1),
+            "Both functions return same amount at same timestamp in past"
         );
     }
 
@@ -66,7 +67,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IVeFxsVotingDelegation.BlockNumberInFuture.selector);
         veFxsVotingDelegation.getPastTotalSupply(block.timestamp);
 
-        assertEq(veFxsVotingDelegation.getPastTotalSupply(block.number - 1), veFxs.totalSupplyAt(block.number - 1));
+        assertEq(
+            veFxsVotingDelegation.getPastTotalSupply(block.number - 1),
+            veFxs.totalSupplyAt(block.number - 1),
+            "Both functions return same amount at same block.number in past"
+        );
     }
 
     // Can't vote if you have no weight
@@ -85,7 +90,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             })
         );
 
-        (uint256 pid2, , , ) = createRealVetoTxProposal(
+        (uint256 pid2, , , ) = createOptimisticProposal(
             address(multisig),
             fraxGovernorOmega,
             address(this),
@@ -104,10 +109,10 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
     // Assert that users with no veFXS locks / balances have 0 voting weight
     function testNoLockGetVotesReturnsZero() public {
-        // has lock started after, -13 because we move forward 12 at end of test setup
+        // lock started after provided timestamp, -13 because we move forward 12 at end of test setup
         assertEq(0, veFxsVotingDelegation.getVotes(accounts[0].account, block.timestamp - 13));
 
-        // never locked
+        // never locked user has no voting weight
         assertEq(0, veFxsVotingDelegation.getVotes(address(0x123), block.timestamp));
     }
 
@@ -149,7 +154,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             address[] memory targets,
             uint256[] memory values,
             bytes[] memory calldatas
-        ) = createRealVetoTxProposal(
+        ) = createOptimisticProposal(
                 address(multisig),
                 fraxGovernorOmega,
                 bob,
@@ -160,39 +165,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.CannotCancelOptimisticTransaction.selector);
         fraxGovernorOmega.cancel(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(uint256(IGovernor.ProposalState.Pending), uint256(fraxGovernorOmega.state(pid)));
-    }
-
-    // Various reverts in propose function for Omega
-    function testBadProposeOmega() public {
-        address[] memory targets = new address[](1);
-        uint256[] memory values = new uint256[](2);
-        bytes[] memory calldatas = new bytes[](1);
-        targets[0] = address(0);
-        calldatas[0] = "";
-
-        vm.startPrank(accounts[0].account);
-        vm.expectRevert("Governor: invalid proposal length");
-        fraxGovernorOmega.propose(targets, values, calldatas, "");
-
-        uint256[] memory values2 = new uint256[](1);
-        bytes[] memory calldatas2 = new bytes[](2);
-
-        vm.expectRevert("Governor: invalid proposal length");
-        fraxGovernorOmega.propose(targets, values2, calldatas2, "");
-
-        address[] memory targets0 = new address[](0);
-        uint256[] memory values0 = new uint256[](0);
-        bytes[] memory calldatas0 = new bytes[](0);
-
-        vm.expectRevert("Governor: empty proposal");
-        fraxGovernorOmega.propose(targets0, values0, calldatas0, "");
-
-        fraxGovernorOmega.propose(targets, values2, calldatas, "");
-        vm.expectRevert("Governor: proposal already exists");
-        fraxGovernorOmega.propose(targets, values2, calldatas, "");
-
-        vm.stopPrank();
+        assertEq(
+            uint256(IGovernor.ProposalState.Pending),
+            uint256(fraxGovernorOmega.state(pid)),
+            "Proposal state is pending"
+        );
     }
 
     // Various reverts in propose function for Alpha
@@ -225,24 +202,6 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         fraxGovernorAlpha.propose(targets, values2, calldatas, "");
 
         vm.stopPrank();
-    }
-
-    // Revert on Omega propose() when a registered Gnosis Safe is the target
-    // This is undesirable because Omega would be able to call safe.approveHash() and any other
-    // owner functions outside of the Frax Team addTransaction() flow.
-    function testCantCallProposeOmegaBadTarget() public {
-        address[] memory targets = new address[](1);
-        targets[0] = address(fraxGovernorOmega);
-        uint256[] memory values = new uint256[](1);
-        values[0] = 0;
-        bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = "";
-
-        targets[0] = address(multisig);
-
-        hoax(eoaOwners[0].account);
-        vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.DisallowedTarget.selector, address(multisig)));
-        fraxGovernorOmega.propose(targets, values, calldatas, "");
     }
 
     // Cannot call addTransaction() for a safe that isnt registered
@@ -340,10 +299,6 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         hoax(bob);
         vm.expectRevert(FraxGovernorBase.SenderVotingWeightBelowProposalThreshold.selector);
         fraxGovernorAlpha.propose(targets, values, calldatas, "");
-
-        hoax(bob);
-        vm.expectRevert(FraxGovernorBase.SenderVotingWeightBelowProposalThreshold.selector);
-        fraxGovernorOmega.propose(targets, values, calldatas, "");
     }
 
     // Test a safe swap owner proposal that no one votes on
@@ -351,7 +306,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         address proposer = accounts[5].account;
         address prevOwner = accounts[3].account;
         address oldOwner = accounts[4].account;
-        assertFalse(multisig.isOwner(proposer));
+        assertFalse(multisig.isOwner(proposer), "Proposer is not an owner");
 
         (
             uint256 pid,
@@ -371,30 +326,50 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         assert(multisig.isOwner(oldOwner));
         assertFalse(multisig.isOwner(proposer));
 
-        assertEq(uint256(IGovernor.ProposalState.Pending), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Pending),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is pending"
+        );
 
         vm.warp(block.timestamp + fraxGovernorAlpha.votingDelay());
         vm.roll(block.number + fraxGovernorAlpha.$votingDelayBlocks() + 1);
 
-        assertEq(uint256(IGovernor.ProposalState.Pending), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Pending),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is pending"
+        );
 
         vm.warp(block.timestamp + 1);
-        assertEq(uint256(IGovernor.ProposalState.Active), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Active),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is active"
+        );
 
         vm.warp(block.timestamp - 1 + fraxGovernorAlpha.votingPeriod());
         vm.roll(block.number + fraxGovernorOmega.votingPeriod() / BLOCK_TIME);
 
-        assertEq(uint256(IGovernor.ProposalState.Active), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Active),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is active"
+        );
 
         vm.warp(block.timestamp + 1);
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Defeated),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is defeated"
+        );
 
         vm.expectRevert("Governor: proposal not successful");
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertFalse(multisig.isOwner(proposer));
-        assert(multisig.isOwner(prevOwner));
-        assert(multisig.isOwner(oldOwner));
+        assertFalse(multisig.isOwner(proposer), "Proposer is still not an owner, proposal failed");
+        assertTrue(multisig.isOwner(prevOwner), "still owner");
+        assertTrue(multisig.isOwner(oldOwner), "still owner");
     }
 
     // Test that frax gov proposals do not reach an expired state
@@ -422,36 +397,56 @@ contract TestFraxGovernor is FraxGovernorTestBase {
                     oldOwner: oldOwner
                 })
             );
-        assert(multisig.isOwner(oldOwner));
-        assertFalse(multisig.isOwner(proposer));
+        assertTrue(multisig.isOwner(oldOwner), "oldOwner is an owner");
+        assertFalse(multisig.isOwner(proposer), "proposer is not an owner");
 
-        assertEq(uint256(IGovernor.ProposalState.Pending), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Pending),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is pending"
+        );
 
         vm.warp(block.timestamp + fraxGovernorAlpha.votingDelay() + 1);
         vm.roll(block.number + fraxGovernorAlpha.$votingDelayBlocks() + 1);
 
-        assertEq(uint256(IGovernor.ProposalState.Active), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Active),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is active"
+        );
 
         hoax(account);
         fraxGovernorAlpha.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.For));
 
         vm.warp(block.timestamp + fraxGovernorAlpha.votingPeriod());
         vm.roll(block.number + fraxGovernorAlpha.votingPeriod() / BLOCK_TIME);
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         vm.warp(block.timestamp + 1000 days);
         vm.roll(block.number + (1000 days / BLOCK_TIME));
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(uint256(IGovernor.ProposalState.Executed), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Executed),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is executed"
+        );
 
-        assertFalse(multisig.isOwner(oldOwner));
-        assert(multisig.isOwner(prevOwner));
-        assert(multisig.isOwner(proposer));
+        assertFalse(multisig.isOwner(oldOwner), "old owner is no longer an owner");
+        assertTrue(multisig.isOwner(prevOwner), "prevOwner is still an owner");
+        assertTrue(multisig.isOwner(proposer), "proposer is now an owner");
     }
 
     // Test that all owners can call addTransaction() and that optimistic proposals default succeed
@@ -469,26 +464,50 @@ contract TestFraxGovernor is FraxGovernorTestBase {
                     getSafe(address(multisig)).safe.nonce() + i
                 );
 
-            assertEq(uint256(IGovernor.ProposalState.Pending), uint256(fraxGovernorOmega.state(pid)));
+            assertEq(
+                uint256(IGovernor.ProposalState.Pending),
+                uint256(fraxGovernorOmega.state(pid)),
+                "Proposal state is pending"
+            );
 
             vm.warp(block.timestamp + fraxGovernorOmega.votingDelay());
             vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks() + 1);
 
-            assertEq(uint256(IGovernor.ProposalState.Pending), uint256(fraxGovernorOmega.state(pid)));
+            assertEq(
+                uint256(IGovernor.ProposalState.Pending),
+                uint256(fraxGovernorOmega.state(pid)),
+                "Proposal state is pending"
+            );
 
             vm.warp(block.timestamp + 1);
-            assertEq(uint256(IGovernor.ProposalState.Active), uint256(fraxGovernorOmega.state(pid)));
+            assertEq(
+                uint256(IGovernor.ProposalState.Active),
+                uint256(fraxGovernorOmega.state(pid)),
+                "Proposal state is active"
+            );
 
             vm.warp(block.timestamp - 1 + fraxGovernorOmega.votingPeriod());
             vm.roll(block.number + fraxGovernorOmega.votingPeriod() / BLOCK_TIME);
 
-            assertEq(uint256(IGovernor.ProposalState.Active), uint256(fraxGovernorOmega.state(pid)));
+            assertEq(
+                uint256(IGovernor.ProposalState.Active),
+                uint256(fraxGovernorOmega.state(pid)),
+                "Proposal state is active"
+            );
 
             vm.warp(block.timestamp + 1);
-            assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorOmega.state(pid)));
+            assertEq(
+                uint256(IGovernor.ProposalState.Succeeded),
+                uint256(fraxGovernorOmega.state(pid)),
+                "Proposal state is succeeded"
+            );
 
             fraxGovernorOmega.execute(targets, values, calldatas, keccak256(bytes("")));
-            assertEq(uint256(IGovernor.ProposalState.Executed), uint256(fraxGovernorOmega.state(pid)));
+            assertEq(
+                uint256(IGovernor.ProposalState.Executed),
+                uint256(fraxGovernorOmega.state(pid)),
+                "Proposal state is executed"
+            );
         }
     }
 
@@ -505,7 +524,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         address proposer = accounts[5].account;
         address prevOwner = accounts[3].account;
         address oldOwner = accounts[4].account;
-        assertFalse(multisig.isOwner(proposer));
+        assertFalse(multisig.isOwner(proposer), "proposer is not an owner");
 
         (
             uint256 pid,
@@ -548,20 +567,40 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.warp(block.timestamp + fraxGovernorOmega.votingPeriod());
         vm.roll(block.number + fraxGovernorOmega.votingPeriod() / BLOCK_TIME);
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorOmega.state(pidV)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorOmega.state(pidV)),
+            "Proposal state is succeeded"
+        );
 
         // execute swap owner
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
-        assertEq(uint256(IGovernor.ProposalState.Queued), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Queued),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is queued"
+        );
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
         // Execute veto tx
         fraxGovernorOmega.execute(targetsV, valuesV, calldatasV, keccak256(bytes("")));
 
-        assertEq(uint256(IGovernor.ProposalState.Executed), uint256(fraxGovernorAlpha.state(pid)));
-        assertEq(uint256(IGovernor.ProposalState.Executed), uint256(fraxGovernorOmega.state(pidV)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Executed),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is executed"
+        );
+        assertEq(
+            uint256(IGovernor.ProposalState.Executed),
+            uint256(fraxGovernorOmega.state(pidV)),
+            "Proposal state is executed"
+        );
     }
 
     // Can resolve optimistic proposals out of order if necessary
@@ -571,7 +610,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         // put 100 FXS in safe to transfer later in proposal
         deal(address(fxs), address(getSafe(address(multisig)).safe), 100e18);
 
-        // increase locked FXS amount, so veFXS amount is slightly above quorum()
+        // increase locked FXS amount, so veFXS amount is above quorum()
         address account = accounts[0].account;
         dealLockMoreFxs(account, 1_005_585e18);
 
@@ -580,7 +619,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             address[] memory targets,
             uint256[] memory values,
             bytes[] memory calldatas
-        ) = createRealVetoTxProposal(address(multisig), fraxGovernorOmega, address(this), startNonce);
+        ) = createOptimisticProposal(address(multisig), fraxGovernorOmega, address(this), startNonce);
 
         (uint256 pidV, , , ) = createOptimisticTxProposal(
             address(multisig),
@@ -592,7 +631,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + 1);
         vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks() + 1);
 
-        assertEq(veFxsVotingDelegation.getVotes(account, block.timestamp), veFxs.balanceOf(accounts[0].account));
+        assertEq(
+            veFxsVotingDelegation.getVotes(account, block.timestamp),
+            veFxs.balanceOf(accounts[0].account),
+            "getVotes balance is equal to veFXS balance"
+        );
 
         hoax(account);
         fraxGovernorOmega.castVote(pidV, uint8(GovernorCompatibilityBravo.VoteType.Against));
@@ -601,8 +644,16 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.warp(block.timestamp + fraxGovernorOmega.votingPeriod());
         vm.roll(block.number + fraxGovernorOmega.votingPeriod() / BLOCK_TIME);
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorOmega.state(pid)));
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorOmega.state(pidV)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorOmega.state(pid)),
+            "Proposal state is succeeded"
+        );
+        assertEq(
+            uint256(IGovernor.ProposalState.Defeated),
+            uint256(fraxGovernorOmega.state(pidV)),
+            "Proposal state is defeated"
+        );
 
         (bytes32 successHash, ) = createTransferFxsProposal(address(multisig), multisig.nonce());
         (bytes32 rejectionHash, ) = createNoOpProposal(address(multisig), address(multisig), startNonce + 1);
@@ -663,8 +714,8 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             generateThreeEoaSigsAndOmega(successHash)
         );
 
-        assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 1);
-        assertEq(fxs.balanceOf(address(this)), 100e18);
+        assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 1, "Execution incremented the nonce");
+        assertEq(fxs.balanceOf(address(this)), 100e18, "tokens successfully sent");
 
         (bytes32 txHash2, ) = createNoOpProposal(
             address(getSafe(address(multisig)).safe),
@@ -687,7 +738,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         );
         vm.stopPrank();
 
-        assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 2);
+        assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 2, "Execution incremented the nonce");
     }
 
     // Alpha works with multiple gnosis safes
@@ -724,7 +775,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.startPrank(accounts[0].account);
         fraxGovernorAlpha.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.Abstain));
-        assert(fraxGovernorAlpha.hasVoted(pid, accounts[0].account));
+        assertTrue(fraxGovernorAlpha.hasVoted(pid, accounts[0].account), "Account voted");
 
         vm.expectRevert("GovernorCountingFractional: all weight cast");
         fraxGovernorAlpha.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.Abstain));
@@ -734,8 +785,16 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.warp(block.timestamp + fraxGovernorAlpha.votingPeriod());
         vm.roll(block.number + fraxGovernorAlpha.votingPeriod() / BLOCK_TIME);
 
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorAlpha.state(pid)));
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid2)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Defeated),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is defeated"
+        );
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid2)),
+            "Proposal state is succeeded"
+        );
 
         vm.stopPrank();
     }
@@ -752,14 +811,14 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             address[] memory targets,
             uint256[] memory values,
             bytes[] memory calldatas
-        ) = createRealVetoTxProposal(
+        ) = createOptimisticProposal(
                 address(multisig),
                 fraxGovernorOmega,
                 address(this),
                 getSafe(address(multisig)).safe.nonce()
             );
 
-        (uint256 pid2, , , ) = createRealVetoTxProposal(
+        (uint256 pid2, , , ) = createOptimisticProposal(
             address(multisig2),
             fraxGovernorOmega,
             address(this),
@@ -771,7 +830,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.startPrank(accounts[0].account);
         fraxGovernorOmega.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.Abstain));
-        assert(fraxGovernorOmega.hasVoted(pid, accounts[0].account));
+        assertTrue(fraxGovernorOmega.hasVoted(pid, accounts[0].account), "Account voted");
 
         vm.expectRevert("GovernorCountingFractional: all weight cast");
         fraxGovernorOmega.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.Abstain));
@@ -783,8 +842,16 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.warp(block.timestamp + fraxGovernorOmega.votingPeriod());
         vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks());
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorOmega.state(pid)));
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorOmega.state(pid2)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorOmega.state(pid)),
+            "Proposal state is succeeded"
+        );
+        assertEq(
+            uint256(IGovernor.ProposalState.Defeated),
+            uint256(fraxGovernorOmega.state(pid2)),
+            "Proposal state is defeated"
+        );
 
         {
             (bytes32 txHash, ) = createTransferFxsProposal(address(multisig), multisig.nonce());
@@ -805,7 +872,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
                 generateThreeEoaSigsAndOmega(txHash)
             );
             vm.stopPrank();
-            assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 1);
+            assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 1, "Execution incremented the nonce");
         }
 
         (bytes32 rejectTxHash, ) = createNoOpProposal(address(multisig2), address(multisig2), multisig2.nonce());
@@ -825,14 +892,14 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             generateThreeEoaSigsAndOmega(rejectTxHash)
         );
         vm.stopPrank();
-        assertEq(getSafe(address(multisig2)).safe.nonce(), startNonce2 + 1);
+        assertEq(getSafe(address(multisig2)).safe.nonce(), startNonce2 + 1, "Execution incremented the nonce");
     }
 
     // Frax Team can abort proposals
     function testAbortTeamTx() public {
         uint256 startNonce = getSafe(address(multisig)).safe.nonce();
 
-        (uint256 pid, , , ) = createRealVetoTxProposal(address(multisig), fraxGovernorOmega, address(this), startNonce);
+        (uint256 pid, , , ) = createOptimisticProposal(address(multisig), fraxGovernorOmega, address(this), startNonce);
 
         (bytes32 originalTxHash, ) = createTransferFxsProposal(address(multisig), startNonce);
 
@@ -846,7 +913,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.ProposalAlreadyCanceled.selector);
         fraxGovernorOmega.abortTransaction(address(multisig), generateThreeEOASigs(abortTxHash));
 
-        assertEq(uint256(IGovernor.ProposalState.Canceled), uint256(fraxGovernorOmega.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Canceled),
+            uint256(fraxGovernorOmega.state(pid)),
+            "Proposal state is canceled"
+        );
 
         hoax(accounts[0].account);
         getSafe(address(multisig)).safe.execTransaction(
@@ -862,7 +933,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             generateThreeEoaSigsAndOmega(abortTxHash)
         );
 
-        assertEq(startNonce + 1, multisig.nonce());
+        assertEq(startNonce + 1, multisig.nonce(), "Execution incremeted the nonce");
 
         hoax(accounts[0].account);
         vm.expectRevert("Governor: vote not currently active");
@@ -930,7 +1001,6 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         dealLockMoreFxs(accounts[0].account, 21_000_000e18);
 
         deal(address(fxs), address(timelockController), 100e18); // Wrongfully sent timelockController
-        //TODO: what happens if assets sent to alpha by accident?
 
         address[] memory targets = new address[](1);
         uint256[] memory values = new uint256[](1);
@@ -946,7 +1016,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         fraxGovernorAlpha.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.For));
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
 
@@ -955,9 +1029,13 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
         vm.stopPrank();
 
-        assertEq(fxs.balanceOf(bob), 100e18);
-        assertEq(fxs.balanceOf(address(fraxGovernorAlpha)), 0);
-        assertEq(uint256(IGovernor.ProposalState.Executed), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(fxs.balanceOf(bob), 100e18, "Bob received FXS");
+        assertEq(fxs.balanceOf(address(fraxGovernorAlpha)), 0, "Alpha has no FXS");
+        assertEq(
+            uint256(IGovernor.ProposalState.Executed),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is executed"
+        );
     }
 
     // Short circuit failure works on Alpha
@@ -981,15 +1059,23 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         fraxGovernorAlpha.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.Against));
 
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Defeated),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is defeated"
+        );
 
         vm.expectRevert("Governor: proposal not successful");
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
         vm.stopPrank();
 
-        assertEq(fxs.balanceOf(bob), 0);
-        assertEq(fxs.balanceOf(address(fraxGovernorAlpha)), 100e18);
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(fxs.balanceOf(bob), 0, "Bob received no FXS");
+        assertEq(fxs.balanceOf(address(fraxGovernorAlpha)), 100e18, "Alpha still has FXS");
+        assertEq(
+            uint256(IGovernor.ProposalState.Defeated),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is defeated"
+        );
     }
 
     // Short circuit success works on Omega
@@ -997,63 +1083,39 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         // increase locked FXS amount, so veFXS amount is slightly above quorum()
         dealLockMoreFxs(accounts[0].account, 21_000_000e18);
 
-        deal(address(fxs), address(fraxGovernorOmega), 100e18); // Wrongfully sent to governor
-
-        address[] memory targets = new address[](1);
-        uint256[] memory values = new uint256[](1);
-        bytes[] memory calldatas = new bytes[](1);
-        targets[0] = address(fxs);
-        calldatas[0] = abi.encodeWithSelector(ERC20.transfer.selector, bob, 100e18);
-
-        vm.startPrank(accounts[0].account);
-        uint256 pid = fraxGovernorOmega.propose(targets, values, calldatas, "");
+        (
+            uint256 pid,
+            address[] memory targets,
+            uint256[] memory values,
+            bytes[] memory calldatas
+        ) = createOptimisticProposal(
+                address(multisig),
+                fraxGovernorOmega,
+                address(this),
+                getSafe(address(multisig)).safe.nonce()
+            );
 
         vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + 1);
         vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks() + 1);
 
+        vm.startPrank(accounts[0].account);
         fraxGovernorOmega.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.For));
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorOmega.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorOmega.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         // majorityFor allows skipping delay
         fraxGovernorOmega.execute(targets, values, calldatas, keccak256(bytes("")));
         vm.stopPrank();
 
-        assertEq(fxs.balanceOf(bob), 100e18);
-        assertEq(fxs.balanceOf(address(fraxGovernorOmega)), 0);
-        assertEq(uint256(IGovernor.ProposalState.Executed), uint256(fraxGovernorOmega.state(pid)));
-    }
-
-    // Short circuit failure works on Omega
-    function testOmegaProposeEarlyFailure() public {
-        // increase locked FXS amount, so veFXS amount is slightly above quorum()
-        dealLockMoreFxs(accounts[0].account, 21_000_000e18);
-
-        deal(address(fxs), address(fraxGovernorOmega), 100e18); // Wrongfully sent to governor
-
-        address[] memory targets = new address[](1);
-        uint256[] memory values = new uint256[](1);
-        bytes[] memory calldatas = new bytes[](1);
-        targets[0] = address(fxs);
-        calldatas[0] = abi.encodeWithSelector(ERC20.transfer.selector, bob, 100e18);
-
-        vm.startPrank(accounts[0].account);
-        uint256 pid = fraxGovernorOmega.propose(targets, values, calldatas, "");
-
-        vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + 1);
-        vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks() + 1);
-
-        fraxGovernorOmega.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.Against));
-
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorOmega.state(pid)));
-
-        vm.expectRevert("Governor: proposal not successful");
-        fraxGovernorOmega.execute(targets, values, calldatas, keccak256(bytes("")));
-        vm.stopPrank();
-
-        assertEq(fxs.balanceOf(bob), 0);
-        assertEq(fxs.balanceOf(address(fraxGovernorOmega)), 100e18);
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorOmega.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Executed),
+            uint256(fraxGovernorOmega.state(pid)),
+            "Proposal state is executed"
+        );
     }
 
     // Regular success conditions with quorum for alpha
@@ -1081,58 +1143,30 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         hoax(accounts[2].account);
         fraxGovernorAlpha.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.For));
 
-        assertEq(uint256(IGovernor.ProposalState.Active), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Active),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is active"
+        );
 
         vm.warp(block.timestamp + fraxGovernorAlpha.votingPeriod());
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
-    }
-
-    // Regular success conditions with quorum for Omega, non optimistic proposal
-    function testOmegaProposeSuccess() public {
-        deal(address(fxs), address(fraxGovernorOmega), 100e18); // Wrongfully sent to governor
-
-        address[] memory targets = new address[](1);
-        uint256[] memory values = new uint256[](1);
-        bytes[] memory calldatas = new bytes[](1);
-        targets[0] = address(fxs);
-        calldatas[0] = abi.encodeWithSelector(ERC20.transfer.selector, bob, 100e18);
-
-        vm.startPrank(accounts[0].account);
-        uint256 pid = fraxGovernorOmega.propose(targets, values, calldatas, "");
-
-        vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + 1);
-        vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks() + 1);
-
-        fraxGovernorOmega.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.For));
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + fraxGovernorOmega.votingPeriod());
-        vm.roll(block.number + fraxGovernorOmega.votingPeriod() / BLOCK_TIME);
-
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorOmega.state(pid)));
-    }
-
-    // Regular failure conditions for Omega, non optimistic proposal
-    function testOmegaProposeDefeated() public {
-        deal(address(fxs), address(fraxGovernorOmega), 100e18); // Wrongfully sent to governor
-
-        address[] memory targets = new address[](1);
-        uint256[] memory values = new uint256[](1);
-        bytes[] memory calldatas = new bytes[](1);
-        targets[0] = address(fxs);
-        calldatas[0] = abi.encodeWithSelector(ERC20.transfer.selector, bob, 100e18);
-
-        vm.startPrank(accounts[0].account);
-        uint256 pid = fraxGovernorOmega.propose(targets, values, calldatas, "");
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + fraxGovernorOmega.votingPeriod() + 1);
-        vm.roll(
-            block.number + fraxGovernorOmega.$votingDelayBlocks() + (fraxGovernorOmega.votingPeriod() / BLOCK_TIME)
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
         );
+    }
 
-        assertEq(uint256(IGovernor.ProposalState.Defeated), uint256(fraxGovernorOmega.state(pid)));
+    // Cannot vanilla propose with Omega, reverts
+    function testOmegaProposeRevert() public {
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+
+        vm.startPrank(accounts[0].account);
+        vm.expectRevert(IFraxGovernorOmega.CannotPropose.selector);
+        fraxGovernorOmega.propose(targets, values, calldatas, "");
     }
 
     // Can cancel Alpha proposals before the voting period starts
@@ -1153,40 +1187,16 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         fraxGovernorAlpha.cancel(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(uint256(IGovernor.ProposalState.Canceled), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Canceled),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is canceled"
+        );
 
         vm.warp(block.timestamp + fraxGovernorAlpha.votingDelay() + 1);
 
         vm.expectRevert("Governor: too late to cancel");
         fraxGovernorAlpha.cancel(targets, values, calldatas, keccak256(bytes("")));
-
-        vm.stopPrank();
-    }
-
-    // Can cancel vanilla propose() proposal before voting period on Omega
-    function testOmegaProposeCancelNotVeto() public {
-        // increase locked FXS amount, so veFXS amount is slightly above quorum()
-        dealLockMoreFxs(accounts[0].account, 21_000_000e18);
-
-        deal(address(fxs), address(fraxGovernorOmega), 100e18); // Wrongfully sent to governor
-
-        address[] memory targets = new address[](1);
-        uint256[] memory values = new uint256[](1);
-        bytes[] memory calldatas = new bytes[](1);
-        targets[0] = address(fxs);
-        calldatas[0] = abi.encodeWithSelector(ERC20.transfer.selector, bob, 100e18);
-
-        vm.startPrank(accounts[0].account);
-        uint256 pid = fraxGovernorOmega.propose(targets, values, calldatas, "");
-
-        fraxGovernorOmega.cancel(targets, values, calldatas, keccak256(bytes("")));
-
-        assertEq(uint256(IGovernor.ProposalState.Canceled), uint256(fraxGovernorOmega.state(pid)));
-
-        vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + 1);
-
-        vm.expectRevert("Governor: too late to cancel");
-        fraxGovernorOmega.cancel(targets, values, calldatas, keccak256(bytes("")));
 
         vm.stopPrank();
     }
@@ -1207,7 +1217,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.updateQuorumNumerator(alphaQuorum + 1);
 
-        assertEq(fraxGovernorAlpha.quorumNumerator(), alphaQuorum);
+        assertEq(fraxGovernorAlpha.quorumNumerator(), alphaQuorum, "value didn't change");
 
         vm.startPrank(accounts[0].account);
         uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
@@ -1219,7 +1229,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1228,7 +1242,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit QuorumNumeratorUpdated({ oldQuorumNumerator: alphaQuorum, newQuorumNumerator: alphaQuorum + 1 });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.quorumNumerator(), alphaQuorum + 1);
+        assertEq(fraxGovernorAlpha.quorumNumerator(), alphaQuorum + 1, "value changed");
     }
 
     // Actual test for setting an Omega governance parameter through an Alpha propose()
@@ -1254,7 +1268,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1263,7 +1281,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit QuorumNumeratorUpdated({ oldQuorumNumerator: omegaQuorum, newQuorumNumerator: omegaQuorum + 1 });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorOmega.quorumNumerator(), omegaQuorum + 1);
+        assertEq(fraxGovernorOmega.quorumNumerator(), omegaQuorum + 1, "value changed");
     }
 
     // Only Alpha can update timelock value
@@ -1283,7 +1301,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.updateTimelock(newTimelock);
 
-        assertEq(fraxGovernorAlpha.$timelock(), timelock);
+        assertEq(fraxGovernorAlpha.$timelock(), timelock, "value didn't change");
 
         vm.startPrank(accounts[0].account);
         uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
@@ -1295,7 +1313,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1304,7 +1326,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit TimelockChange({ oldTimelock: timelock, newTimelock: newTimelock });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.$timelock(), newTimelock);
+        assertEq(fraxGovernorAlpha.$timelock(), newTimelock, "value changed");
     }
 
     // Only Alpha can update short circuit numerator
@@ -1317,7 +1339,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.updateShortCircuitNumerator(alphaShortCircuitThreshold + 1);
 
-        assertEq(fraxGovernorAlpha.shortCircuitNumerator(), alphaShortCircuitThreshold);
+        assertEq(fraxGovernorAlpha.shortCircuitNumerator(), alphaShortCircuitThreshold, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorAlpha);
@@ -1335,7 +1357,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1347,8 +1373,12 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.shortCircuitNumerator(), alphaShortCircuitThreshold + 1);
-        assertEq(fraxGovernorOmega.shortCircuitNumerator(block.timestamp - 1), alphaShortCircuitThreshold);
+        assertEq(fraxGovernorAlpha.shortCircuitNumerator(), alphaShortCircuitThreshold + 1, "value changed");
+        assertEq(
+            fraxGovernorOmega.shortCircuitNumerator(block.timestamp - 1),
+            alphaShortCircuitThreshold,
+            "old value preserved for old timestamps"
+        );
     }
 
     // Only Alpha can update short circuit numerator
@@ -1362,7 +1392,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
         fraxGovernorOmega.updateShortCircuitNumerator(omegaShortCircuitThreshold + 1);
 
-        assertEq(fraxGovernorOmega.shortCircuitNumerator(), omegaShortCircuitThreshold);
+        assertEq(fraxGovernorOmega.shortCircuitNumerator(), omegaShortCircuitThreshold, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
@@ -1380,7 +1410,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1392,8 +1426,12 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorOmega.shortCircuitNumerator(), omegaShortCircuitThreshold + 1);
-        assertEq(fraxGovernorOmega.shortCircuitNumerator(block.timestamp - 1), omegaShortCircuitThreshold);
+        assertEq(fraxGovernorOmega.shortCircuitNumerator(), omegaShortCircuitThreshold + 1, "value changed");
+        assertEq(
+            fraxGovernorOmega.shortCircuitNumerator(block.timestamp - 1),
+            omegaShortCircuitThreshold,
+            "old value preserved for old timestamps"
+        );
     }
 
     // Can't increase shortcircuit threshold past 100
@@ -1419,7 +1457,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1451,7 +1493,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1471,7 +1517,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.setVeFxsVotingDelegation(newVotingDelegation);
 
-        assertEq(fraxGovernorAlpha.token(), alphaVeFxsVotingDelegation);
+        assertEq(fraxGovernorAlpha.token(), alphaVeFxsVotingDelegation, "value didnt change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorAlpha);
@@ -1489,7 +1535,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1501,12 +1551,12 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.token(), newVotingDelegation);
+        assertEq(fraxGovernorAlpha.token(), newVotingDelegation, "value changed");
     }
 
     // Only Alpha can update VeFxsVotingDelegation contract
     function testOmegaSetVeFxsVotingDelegation() public {
-        // increase locked FXS amount, so veFXS amount is slightly above quorum()
+        // increase locked FXS amount, so veFXS amount is above quorum()
         dealLockMoreFxs(accounts[0].account, 21_000_000e18);
 
         address omegaVeFxsVotingDelegation = fraxGovernorOmega.token();
@@ -1516,7 +1566,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
         fraxGovernorOmega.setVeFxsVotingDelegation(newVotingDelegation);
 
-        assertEq(fraxGovernorOmega.token(), omegaVeFxsVotingDelegation);
+        assertEq(fraxGovernorOmega.token(), omegaVeFxsVotingDelegation, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
@@ -1534,7 +1584,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1546,7 +1600,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorOmega.token(), newVotingDelegation);
+        assertEq(fraxGovernorOmega.token(), newVotingDelegation, "value changed");
     }
 
     // Only Alpha can update Voting delay
@@ -1559,7 +1613,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.setVotingDelay(alphaVotingDelay + 1);
 
-        assertEq(fraxGovernorAlpha.votingDelay(), alphaVotingDelay);
+        assertEq(fraxGovernorAlpha.votingDelay(), alphaVotingDelay, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorAlpha);
@@ -1577,7 +1631,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1586,7 +1644,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit VotingDelaySet({ oldVotingDelay: alphaVotingDelay, newVotingDelay: alphaVotingDelay + 1 });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.votingDelay(), alphaVotingDelay + 1);
+        assertEq(fraxGovernorAlpha.votingDelay(), alphaVotingDelay + 1, "value changed");
     }
 
     // Only Alpha can update Voting delay
@@ -1600,7 +1658,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
         fraxGovernorOmega.setVotingDelay(omegaVotingDelay + 1);
 
-        assertEq(fraxGovernorOmega.votingDelay(), omegaVotingDelay);
+        assertEq(fraxGovernorOmega.votingDelay(), omegaVotingDelay, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
@@ -1618,7 +1676,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1627,7 +1689,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit VotingDelaySet({ oldVotingDelay: omegaVotingDelay, newVotingDelay: omegaVotingDelay + 1 });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorOmega.votingDelay(), omegaVotingDelay + 1);
+        assertEq(fraxGovernorOmega.votingDelay(), omegaVotingDelay + 1, "value changed");
     }
 
     // Only Alpha can update Voting delay in block
@@ -1640,7 +1702,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.setVotingDelayBlocks(alphaVotingDelayBlocks + 1);
 
-        assertEq(fraxGovernorAlpha.$votingDelayBlocks(), alphaVotingDelayBlocks);
+        assertEq(fraxGovernorAlpha.$votingDelayBlocks(), alphaVotingDelayBlocks, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorAlpha);
@@ -1658,7 +1720,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1671,7 +1737,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.$votingDelayBlocks(), alphaVotingDelayBlocks + 1);
+        assertEq(fraxGovernorAlpha.$votingDelayBlocks(), alphaVotingDelayBlocks + 1, "value changed");
     }
 
     // Only Alpha can update Voting delay in blocks
@@ -1685,7 +1751,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
         fraxGovernorOmega.setVotingDelayBlocks(omegaVotingDelayBlocks + 1);
 
-        assertEq(fraxGovernorOmega.$votingDelayBlocks(), omegaVotingDelayBlocks);
+        assertEq(fraxGovernorOmega.$votingDelayBlocks(), omegaVotingDelayBlocks, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
@@ -1703,7 +1769,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1715,7 +1785,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorOmega.$votingDelayBlocks(), omegaVotingDelayBlocks + 1);
+        assertEq(fraxGovernorOmega.$votingDelayBlocks(), omegaVotingDelayBlocks + 1, "value changed");
     }
 
     // Only Alpha can update Voting period
@@ -1728,7 +1798,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.setVotingPeriod(alphaVotingPeriod + 1);
 
-        assertEq(fraxGovernorAlpha.votingPeriod(), alphaVotingPeriod);
+        assertEq(fraxGovernorAlpha.votingPeriod(), alphaVotingPeriod, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorAlpha);
@@ -1746,7 +1816,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1755,7 +1829,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit VotingPeriodSet({ oldVotingPeriod: alphaVotingPeriod, newVotingPeriod: alphaVotingPeriod + 1 });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.votingPeriod(), alphaVotingPeriod + 1);
+        assertEq(fraxGovernorAlpha.votingPeriod(), alphaVotingPeriod + 1, "value changed");
     }
 
     // Only Alpha can update Voting period
@@ -1769,7 +1843,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
         fraxGovernorOmega.setVotingPeriod(omegaVotingPeriod + 1);
 
-        assertEq(fraxGovernorOmega.votingPeriod(), omegaVotingPeriod);
+        assertEq(fraxGovernorOmega.votingPeriod(), omegaVotingPeriod, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
@@ -1787,7 +1861,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1796,7 +1874,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit VotingPeriodSet({ oldVotingPeriod: omegaVotingPeriod, newVotingPeriod: omegaVotingPeriod + 1 });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorOmega.votingPeriod(), omegaVotingPeriod + 1);
+        assertEq(fraxGovernorOmega.votingPeriod(), omegaVotingPeriod + 1, "value changed");
     }
 
     // Only Alpha can update proposal threshold
@@ -1809,7 +1887,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("Governor: onlyGovernance");
         fraxGovernorAlpha.setVotingPeriod(alphaProposalThreshold + 1);
 
-        assertEq(fraxGovernorAlpha.proposalThreshold(), alphaProposalThreshold);
+        assertEq(fraxGovernorAlpha.proposalThreshold(), alphaProposalThreshold, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorAlpha);
@@ -1827,7 +1905,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1839,7 +1921,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorAlpha.proposalThreshold(), alphaProposalThreshold + 1);
+        assertEq(fraxGovernorAlpha.proposalThreshold(), alphaProposalThreshold + 1, "value changed");
     }
 
     // Only Alpha can update proposal threshold
@@ -1853,7 +1935,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
         fraxGovernorOmega.setProposalThreshold(omegaProposalThreshold + 1);
 
-        assertEq(fraxGovernorOmega.proposalThreshold(), omegaProposalThreshold);
+        assertEq(fraxGovernorOmega.proposalThreshold(), omegaProposalThreshold, "value didn't change");
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
@@ -1871,7 +1953,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1883,7 +1969,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         });
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(fraxGovernorOmega.proposalThreshold(), omegaProposalThreshold + 1);
+        assertEq(fraxGovernorOmega.proposalThreshold(), omegaProposalThreshold + 1, "value changed");
     }
 
     // Only Alpha can change Omega safe configuration
@@ -1914,7 +2000,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1925,8 +2015,16 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit SafeConfigUpdate(_safeConfigs[1].safe, 0, _safeConfigs[1].requiredSignatures);
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(_safeConfigs[0].requiredSignatures, fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[0].safe));
-        assertEq(_safeConfigs[1].requiredSignatures, fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[1].safe));
+        assertEq(
+            _safeConfigs[0].requiredSignatures,
+            fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[0].safe),
+            "First configuration is set"
+        );
+        assertEq(
+            _safeConfigs[1].requiredSignatures,
+            fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[1].safe),
+            "Second configuration is set"
+        );
     }
 
     // Only Alpha can change Omega safe configuration
@@ -1957,7 +2055,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         vm.stopPrank();
 
-        assertEq(uint256(IGovernor.ProposalState.Succeeded), uint256(fraxGovernorAlpha.state(pid)));
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
 
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
@@ -1970,12 +2072,140 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         emit SafeConfigUpdate(_safeConfigs[1].safe, 0, _safeConfigs[1].requiredSignatures);
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
-        assertEq(0, fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[0].safe));
-        assertEq(0, fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[1].safe));
+        assertEq(0, fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[0].safe), "First configuration is unset");
+        assertEq(0, fraxGovernorOmega.$safeRequiredSignatures(_safeConfigs[1].safe), "Second configuration is unset");
     }
 
     // Fractional voting works as expected on Alpha
     function testFractionalVotingAlpha() public {
+        address proposer = accounts[5].account;
+        address prevOwner = accounts[3].account;
+        address oldOwner = accounts[4].account;
+
+        (uint256 pid, , , ) = createSwapOwnerProposal(
+            CreateSwapOwnerProposalParams({
+                _fraxGovernorAlpha: fraxGovernorAlpha,
+                _safe: multisig,
+                proposer: proposer,
+                prevOwner: prevOwner,
+                oldOwner: oldOwner
+            })
+        );
+
+        vm.warp(block.timestamp + fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + fraxGovernorAlpha.$votingDelayBlocks() + 1);
+
+        uint256 weight = veFxsVotingDelegation.getVotes(accounts[0].account, fraxGovernorAlpha.proposalSnapshot(pid));
+
+        // against, for, abstain
+        bytes memory paramsTooLow = abi.encodePacked(
+            uint128((weight * 50) / 100),
+            uint128((weight * 10) / 100),
+            uint128((weight * 40) / 100)
+        );
+
+        vm.startPrank(accounts[0].account);
+        vm.expectRevert("GovernorCountingFractional: votes must match total voting weight");
+        fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", paramsTooLow);
+
+        // against, for, abstain
+        bytes memory paramsTooHigh = abi.encodePacked(
+            uint128((weight * 50) / 100),
+            uint128((weight * 10) / 100) + 2,
+            uint128((weight * 40) / 100)
+        );
+
+        vm.expectRevert("GovernorCountingFractional: votes must match total voting weight");
+        fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", paramsTooHigh);
+
+        // against, for, abstain
+        bytes memory params = abi.encodePacked(
+            uint128((weight * 50) / 100),
+            uint128((weight * 10) / 100) + 1,
+            uint128((weight * 40) / 100)
+        );
+
+        fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", params);
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = fraxGovernorAlpha.proposalVotes(pid);
+
+        assertGt(againstVotes, abstainVotes, "Against votes is largest");
+        assertGt(abstainVotes, forVotes, "Abstain votes is second largest");
+        assertEq(weight, againstVotes + forVotes + abstainVotes, "All 3 = total voting weight");
+
+        bytes memory params2 = abi.encodePacked(uint128(1), uint128(0), uint128(0));
+
+        vm.expectRevert("GovernorCountingFractional: all weight cast");
+        fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", params2);
+
+        bytes memory params3 = abi.encodePacked(uint128(0), uint128(0), uint128(0));
+
+        vm.expectRevert("GovernorCountingFractional: all weight cast");
+        fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", params3);
+        vm.stopPrank();
+    }
+
+    // Fractional voting works as expected on Omega
+    function testFractionalVotingOmega() public {
+        (uint256 pid, , , ) = createOptimisticProposal(
+            address(multisig),
+            fraxGovernorOmega,
+            address(this),
+            getSafe(address(multisig)).safe.nonce()
+        );
+
+        vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + 1);
+        vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks() + 1);
+
+        uint256 weight = veFxsVotingDelegation.getVotes(accounts[0].account, fraxGovernorOmega.proposalSnapshot(pid));
+
+        // against, for, abstain
+        bytes memory paramsTooLow = abi.encodePacked(
+            uint128((weight * 50) / 100),
+            uint128((weight * 10) / 100),
+            uint128((weight * 40) / 100)
+        );
+
+        vm.startPrank(accounts[0].account);
+        vm.expectRevert("GovernorCountingFractional: votes must match total voting weight");
+        fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", paramsTooLow);
+
+        // against, for, abstain
+        bytes memory paramsTooHigh = abi.encodePacked(
+            uint128((weight * 50) / 100),
+            uint128((weight * 10) / 100) + 2,
+            uint128((weight * 40) / 100)
+        );
+
+        vm.expectRevert("GovernorCountingFractional: votes must match total voting weight");
+        fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", paramsTooHigh);
+
+        // against, for, abstain
+        bytes memory params = abi.encodePacked(
+            uint128((weight * 50) / 100),
+            uint128((weight * 10) / 100) + 1,
+            uint128((weight * 40) / 100)
+        );
+
+        fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", params);
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = fraxGovernorOmega.proposalVotes(pid);
+
+        assertGt(againstVotes, abstainVotes, "Against votes is largest");
+        assertGt(abstainVotes, forVotes, "abstain votes is second largest");
+        assertEq(weight, againstVotes + forVotes + abstainVotes, "All 3 = total voting weight");
+
+        bytes memory params2 = abi.encodePacked(uint128(1), uint128(0), uint128(0));
+
+        vm.expectRevert("GovernorCountingFractional: all weight cast");
+        fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", params2);
+
+        bytes memory params3 = abi.encodePacked(uint128(0), uint128(0), uint128(0));
+
+        vm.expectRevert("GovernorCountingFractional: all weight cast");
+        fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", params3);
+        vm.stopPrank();
+    }
+
+    function testFractionalVotingBySigAlpha() public {
         address proposer = accounts[5].account;
         address prevOwner = accounts[3].account;
         address oldOwner = accounts[4].account;
@@ -2002,24 +2232,138 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             uint128((weight * 40) / 100)
         );
 
-        hoax(accounts[0].account);
-        fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", params);
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+
+        {
+            (
+                ,
+                string memory name,
+                string memory version,
+                uint256 chainId,
+                address verifyingContract,
+                ,
+
+            ) = fraxGovernorAlpha.eip712Domain();
+
+            bytes32 TYPE_HASH = keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            );
+            bytes32 domainSeparator = keccak256(
+                abi.encode(TYPE_HASH, keccak256(bytes(name)), keccak256(bytes(version)), chainId, verifyingContract)
+            );
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    fraxGovernorAlpha.EXTENDED_BALLOT_TYPEHASH(),
+                    pid,
+                    0,
+                    keccak256(bytes("reason")),
+                    keccak256(params)
+                )
+            );
+            bytes32 digest = ECDSA.toTypedDataHash(domainSeparator, structHash);
+            (v, r, s) = vm.sign(accounts[0].pk, digest);
+        }
+
+        fraxGovernorAlpha.castVoteWithReasonAndParamsBySig({
+            proposalId: pid,
+            support: 0,
+            reason: "reason",
+            params: params,
+            v: v,
+            r: r,
+            s: s
+        });
         (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = fraxGovernorAlpha.proposalVotes(pid);
 
-        assertGt(againstVotes, abstainVotes);
-        assertGt(abstainVotes, forVotes);
-        assertEq(weight, againstVotes + forVotes + abstainVotes);
+        assertGt(againstVotes, abstainVotes, "Against votes is largest");
+        assertGt(abstainVotes, forVotes, "abstain votes is second largest");
+        assertEq(weight, againstVotes + forVotes + abstainVotes, "All 3 = total voting weight");
 
-        bytes memory params2 = abi.encodePacked(uint128(1), uint128(0), uint128(0));
-
-        hoax(accounts[0].account);
+        // Can't replay
         vm.expectRevert("GovernorCountingFractional: all weight cast");
-        fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", params2);
+        fraxGovernorAlpha.castVoteWithReasonAndParamsBySig({
+            proposalId: pid,
+            support: 0,
+            reason: "reason",
+            params: params,
+            v: v,
+            r: r,
+            s: s
+        });
     }
 
-    // Fractional voting works as expected on Omega
-    function testFractionalVotingOmega() public {
-        (uint256 pid, , , ) = createRealVetoTxProposal(
+    function testVotingBySigAlpha() public {
+        address proposer = accounts[5].account;
+        address prevOwner = accounts[3].account;
+        address oldOwner = accounts[4].account;
+
+        (uint256 pid, , , ) = createSwapOwnerProposal(
+            CreateSwapOwnerProposalParams({
+                _fraxGovernorAlpha: fraxGovernorAlpha,
+                _safe: multisig,
+                proposer: proposer,
+                prevOwner: prevOwner,
+                oldOwner: oldOwner
+            })
+        );
+
+        vm.warp(block.timestamp + fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + fraxGovernorAlpha.$votingDelayBlocks() + 1);
+
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+
+        {
+            (
+                ,
+                string memory name,
+                string memory version,
+                uint256 chainId,
+                address verifyingContract,
+                ,
+
+            ) = fraxGovernorAlpha.eip712Domain();
+
+            bytes32 TYPE_HASH = keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            );
+            bytes32 domainSeparator = keccak256(
+                abi.encode(TYPE_HASH, keccak256(bytes(name)), keccak256(bytes(version)), chainId, verifyingContract)
+            );
+            bytes32 structHash = keccak256(
+                abi.encode(fraxGovernorAlpha.BALLOT_TYPEHASH(), pid, uint8(GovernorCompatibilityBravo.VoteType.Against))
+            );
+            bytes32 digest = ECDSA.toTypedDataHash(domainSeparator, structHash);
+            (v, r, s) = vm.sign(accounts[0].pk, digest);
+        }
+
+        fraxGovernorAlpha.castVoteBySig({
+            proposalId: pid,
+            support: uint8(GovernorCompatibilityBravo.VoteType.Against),
+            v: v,
+            r: r,
+            s: s
+        });
+        (uint256 againstVotes, , ) = fraxGovernorAlpha.proposalVotes(pid);
+
+        assertGt(againstVotes, 0, "Voting against by sig worked");
+
+        // Can't replay
+        vm.expectRevert("GovernorCountingFractional: all weight cast");
+        fraxGovernorAlpha.castVoteBySig({
+            proposalId: pid,
+            support: uint8(GovernorCompatibilityBravo.VoteType.Against),
+            v: v,
+            r: r,
+            s: s
+        });
+    }
+
+    function testFractionalVotingBySigOmega() public {
+        (uint256 pid, , , ) = createOptimisticProposal(
             address(multisig),
             fraxGovernorOmega,
             address(this),
@@ -2038,19 +2382,127 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             uint128((weight * 40) / 100)
         );
 
-        hoax(accounts[0].account);
-        fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", params);
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+
+        {
+            (
+                ,
+                string memory name,
+                string memory version,
+                uint256 chainId,
+                address verifyingContract,
+                ,
+
+            ) = fraxGovernorOmega.eip712Domain();
+
+            bytes32 TYPE_HASH = keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            );
+            bytes32 domainSeparator = keccak256(
+                abi.encode(TYPE_HASH, keccak256(bytes(name)), keccak256(bytes(version)), chainId, verifyingContract)
+            );
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    fraxGovernorOmega.EXTENDED_BALLOT_TYPEHASH(),
+                    pid,
+                    0,
+                    keccak256(bytes("reason")),
+                    keccak256(params)
+                )
+            );
+            bytes32 digest = ECDSA.toTypedDataHash(domainSeparator, structHash);
+            (v, r, s) = vm.sign(accounts[0].pk, digest);
+        }
+
+        fraxGovernorOmega.castVoteWithReasonAndParamsBySig({
+            proposalId: pid,
+            support: 0,
+            reason: "reason",
+            params: params,
+            v: v,
+            r: r,
+            s: s
+        });
         (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = fraxGovernorOmega.proposalVotes(pid);
 
-        assertGt(againstVotes, abstainVotes);
-        assertGt(abstainVotes, forVotes);
-        assertEq(weight, againstVotes + forVotes + abstainVotes);
+        assertGt(againstVotes, abstainVotes, "Against votes is largest");
+        assertGt(abstainVotes, forVotes, "abstain votes is second largest");
+        assertEq(weight, againstVotes + forVotes + abstainVotes, "All 3 = total voting weight");
 
-        bytes memory params2 = abi.encodePacked(uint128(1), uint128(0), uint128(0));
-
-        hoax(accounts[0].account);
+        // Can't replay
         vm.expectRevert("GovernorCountingFractional: all weight cast");
-        fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", params2);
+        fraxGovernorOmega.castVoteWithReasonAndParamsBySig({
+            proposalId: pid,
+            support: 0,
+            reason: "reason",
+            params: params,
+            v: v,
+            r: r,
+            s: s
+        });
+    }
+
+    function testVotingBySigOmega() public {
+        (uint256 pid, , , ) = createOptimisticProposal(
+            address(multisig),
+            fraxGovernorOmega,
+            address(this),
+            getSafe(address(multisig)).safe.nonce()
+        );
+
+        vm.warp(block.timestamp + fraxGovernorOmega.votingDelay() + 1);
+        vm.roll(block.number + fraxGovernorOmega.$votingDelayBlocks() + 1);
+
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+
+        {
+            (
+                ,
+                string memory name,
+                string memory version,
+                uint256 chainId,
+                address verifyingContract,
+                ,
+
+            ) = fraxGovernorOmega.eip712Domain();
+
+            bytes32 TYPE_HASH = keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            );
+            bytes32 domainSeparator = keccak256(
+                abi.encode(TYPE_HASH, keccak256(bytes(name)), keccak256(bytes(version)), chainId, verifyingContract)
+            );
+            bytes32 structHash = keccak256(
+                abi.encode(fraxGovernorOmega.BALLOT_TYPEHASH(), pid, uint8(GovernorCompatibilityBravo.VoteType.Against))
+            );
+            bytes32 digest = ECDSA.toTypedDataHash(domainSeparator, structHash);
+            (v, r, s) = vm.sign(accounts[0].pk, digest);
+        }
+
+        fraxGovernorOmega.castVoteBySig({
+            proposalId: pid,
+            support: uint8(GovernorCompatibilityBravo.VoteType.Against),
+            v: v,
+            r: r,
+            s: s
+        });
+        (uint256 againstVotes, , ) = fraxGovernorOmega.proposalVotes(pid);
+
+        assertGt(againstVotes, 0, "Voting against by sig worked");
+
+        // Can't replay
+        vm.expectRevert("GovernorCountingFractional: all weight cast");
+        fraxGovernorOmega.castVoteBySig({
+            proposalId: pid,
+            support: uint8(GovernorCompatibilityBravo.VoteType.Against),
+            v: v,
+            r: r,
+            s: s
+        });
     }
 
     // batchAddTransaction() revert condition test

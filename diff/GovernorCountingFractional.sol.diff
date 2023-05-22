@@ -57,7 +57,26 @@
 >         uint128 totalWeight,
 >         uint8 support
 >     ) internal {
-237,239c229,237
+211,212c203,204
+<         uint128 _newWeight = _againstVotes + _forVotes + _abstainVotes;
+<         require (_newWeight == totalWeight, "GovernorCountingFractional: votes must match total voting weight");
+---
+>         uint128 _existingWeight = _proposalVotersWeightCast[proposalId][account];
+>         uint256 _newWeight = uint256(_againstVotes) + _forVotes + _abstainVotes + _existingWeight;
+214c206
+<         _proposalVotersWeightCast[proposalId][account] = _newWeight;
+---
+>         require(_newWeight <= totalWeight, "GovernorCountingFractional: vote would exceed weight");
+215a208,211
+>         // It's safe to downcast here because we've just confirmed that
+>         // _newWeight <= totalWeight, and totalWeight is a uint128.
+>         _proposalVotersWeightCast[proposalId][account] = uint128(_newWeight);
+>
+226c222
+<     uint256 internal constant _VOTEMASK = 0xffffffffffffffffffffffffffffffff; // 128 bits of 0's, 128 bits of 1's
+---
+>     uint256 constant internal _VOTEMASK = 0xffffffffffffffffffffffffffffffff; // 128 bits of 0's, 128 bits of 1's
+233,235c229,237
 <     function _decodePackedVotes(
 <         bytes memory voteData
 <     ) internal pure returns (uint128 againstVotes, uint128 forVotes, uint128 abstainVotes) {
@@ -71,8 +90,3 @@
 >         uint128 abstainVotes
 >     )
 >     {
-246c244
-< }
----
-> }
-\ No newline at end of file

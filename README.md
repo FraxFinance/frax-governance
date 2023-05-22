@@ -2,7 +2,7 @@
 
 ## Overview
 
-Frax Governance is Frax Finances' implementation of onchain governance. veFXS holders can propose arbitrary governance actions through FraxGovernorAlpha. FraxGovernorAlpha has a high quorum, and is used in rare situations and for one off governance parameter changes.
+Frax Governance is Frax Finance's implementation of onchain governance. veFXS holders can propose arbitrary governance actions through FraxGovernorAlpha. FraxGovernorAlpha has a high quorum, and is used in rare situations and for one off governance parameter changes.
 
 The Frax team has a special Governor contract called FraxGovernorOmega. Omega allows the Frax team to submit proposals corresponding to Gnosis Safe transactions. These proposals must be approved or vetoed by veFXS holders. These special proposals are optimistic, meaning that they succeed by default unless quorum is met, and they are vetoed. This ensures that the community must approve of any onchain action that the Frax team makes.
 

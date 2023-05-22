@@ -208,14 +208,10 @@ abstract contract GovernorCountingFractional is GovernorVotesQuorumFraction {
 
         (uint128 _againstVotes, uint128 _forVotes, uint128 _abstainVotes) = _decodePackedVotes(voteData);
 
-        uint128 _existingWeight = _proposalVotersWeightCast[proposalId][account];
-        uint256 _newWeight = uint256(_againstVotes) + _forVotes + _abstainVotes + _existingWeight;
+        uint128 _newWeight = _againstVotes + _forVotes + _abstainVotes;
+        require(_newWeight == totalWeight, "GovernorCountingFractional: votes must match total voting weight");
 
-        require(_newWeight <= totalWeight, "GovernorCountingFractional: vote would exceed weight");
-
-        // It's safe to downcast here because we've just confirmed that
-        // _newWeight <= totalWeight, and totalWeight is a uint128.
-        _proposalVotersWeightCast[proposalId][account] = uint128(_newWeight);
+        _proposalVotersWeightCast[proposalId][account] = _newWeight;
 
         ProposalVote memory _proposalVote = _proposalVotes[proposalId];
         _proposalVote = ProposalVote(
