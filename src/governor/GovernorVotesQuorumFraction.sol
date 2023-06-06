@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.9.0-rc.0) (governance/extensions/GovernorVotesQuorumFraction.sol)
+// OpenZeppelin Contracts (last updated v4.9.0) (governance/extensions/GovernorVotesQuorumFraction.sol)
 
 pragma solidity ^0.8.0;
 
@@ -14,7 +14,6 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  * _Available since v4.3._
  */
 abstract contract GovernorVotesQuorumFraction is GovernorVotes {
-    using SafeCast for *;
     using Checkpoints for Checkpoints.Trace224;
 
     /// @custom:oz-retyped-from Checkpoints.History
@@ -29,22 +28,7 @@ abstract contract GovernorVotesQuorumFraction is GovernorVotes {
      * specified as a percent: a numerator of 10 corresponds to quorum being 10% of total supply. The denominator can be
      * customized by overriding {quorumDenominator}.
      */
-    constructor(
-        address veFxsVotingDelegation,
-        string memory _name,
-        uint256 quorumNumeratorValue,
-        uint256 initialVotingDelay,
-        uint256 initialVotingPeriod,
-        uint256 initialProposalThreshold
-    )
-        GovernorVotes(
-            IVotes(veFxsVotingDelegation),
-            _name,
-            initialVotingDelay,
-            initialVotingPeriod,
-            initialProposalThreshold
-        )
-    {
+    constructor(uint256 quorumNumeratorValue) {
         _updateQuorumNumerator(quorumNumeratorValue);
     }
 

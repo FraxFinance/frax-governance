@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.9.0-rc.0) (governance/extensions/GovernorTimelockControl.sol)
+// OpenZeppelin Contracts (last updated v4.9.0) (governance/extensions/GovernorTimelockControl.sol)
 
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/governance/extensions/IGovernorTimelock.sol";
 import "@openzeppelin/contracts/governance/TimelockController.sol";
-import { FraxGovernorBase, ConstructorParams as FraxGovernorBaseParams } from "./FraxGovernorBase.sol";
-import { ConstructorParams as FraxGovernorAlphaParams } from "./FraxGovernorAlpha.sol";
 import { Governor } from "./Governor.sol";
 
 /**
@@ -25,7 +23,7 @@ import { Governor } from "./Governor.sol";
  *
  * _Available since v4.3._
  */
-abstract contract GovernorTimelockControl is IGovernorTimelock, FraxGovernorBase {
+abstract contract GovernorTimelockControl is IGovernorTimelock, Governor {
     TimelockController public $timelock;
     mapping(uint256 => bytes32) public $timelockIds;
 
@@ -37,24 +35,8 @@ abstract contract GovernorTimelockControl is IGovernorTimelock, FraxGovernorBase
     /**
      * @dev Set the timelock.
      */
-    constructor(
-        FraxGovernorAlphaParams memory params
-    )
-        FraxGovernorBase(
-            FraxGovernorBaseParams({
-                veFxs: params.veFxs,
-                veFxsVotingDelegation: params.veFxsVotingDelegation,
-                _name: "FraxGovernorAlpha",
-                initialVotingDelay: params.initialVotingDelay,
-                initialVotingPeriod: params.initialVotingPeriod,
-                initialProposalThreshold: params.initialProposalThreshold,
-                quorumNumeratorValue: params.quorumNumeratorValue,
-                initialVotingDelayBlocks: params.initialVotingDelayBlocks,
-                initialShortCircuitNumerator: params.initialShortCircuitNumerator
-            })
-        )
-    {
-        _updateTimelock(TimelockController(params.timelockController));
+    constructor(TimelockController timelockAddress) {
+        _updateTimelock(timelockAddress);
     }
 
     /**

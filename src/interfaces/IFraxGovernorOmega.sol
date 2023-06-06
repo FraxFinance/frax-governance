@@ -2,7 +2,6 @@
 pragma solidity >=0.8.19;
 
 import { Enum } from "@gnosis.pm/contracts/common/Enum.sol";
-import { SafeConfig } from "../FraxGovernorOmega.sol";
 
 interface IFraxGovernorOmega {
     struct TxHashArgs {
@@ -20,9 +19,7 @@ interface IFraxGovernorOmega {
 
     function $gnosisSafeToNonceToTxHash(address safe, uint256 safeNonce) external view returns (bytes32 txHash);
 
-    function $optimisticProposalIdToTxHash(uint256 proposalId) external view returns (bytes32 txHash);
-
-    function $safeRequiredSignatures(address safe) external view returns (uint256 requiredSignatures);
+    function $safeAllowlist(address safe) external view returns (uint256 status);
 
     function $snapshotTimestampToSnapshotBlockNumber(uint256 snapshot) external view returns (uint256 blockNumber);
 
@@ -42,6 +39,8 @@ interface IFraxGovernorOmega {
 
     function abortTransaction(address teamSafe, bytes memory signatures) external;
 
+    function addSafesToAllowlist(address[] memory safes) external;
+
     function addTransaction(
         address teamSafe,
         TxHashArgs memory args,
@@ -53,6 +52,8 @@ interface IFraxGovernorOmega {
         TxHashArgs[] memory args,
         bytes[] memory signatures
     ) external returns (uint256[] memory optimisticProposalIds);
+
+    function bulkCastVote(uint256[] memory proposalId, uint8[] memory support) external;
 
     function cancel(address[] memory, uint256[] memory, bytes[] memory, bytes32) external pure returns (uint256);
 
@@ -100,6 +101,8 @@ interface IFraxGovernorOmega {
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) external payable returns (uint256);
+
+    function fractionalVoteNonce(address) external view returns (uint128);
 
     function getVotes(address account, uint256 timepoint) external view returns (uint256);
 
@@ -160,7 +163,9 @@ interface IFraxGovernorOmega {
 
     function rejectTransaction(address teamSafe, uint256 nonce) external;
 
-    function relay(address target, uint256 value, bytes memory data) external payable;
+    function relay(address, uint256, bytes memory) external payable;
+
+    function removeSafesFromAllowlist(address[] memory safes) external;
 
     function setProposalThreshold(uint256 newProposalThreshold) external;
 
@@ -186,8 +191,6 @@ interface IFraxGovernorOmega {
 
     function updateQuorumNumerator(uint256 newQuorumNumerator) external;
 
-    function updateSafes(SafeConfig[] memory safeConfigs) external;
-
     function updateShortCircuitNumerator(uint256 newShortCircuitNumerator) external;
 
     function version() external view returns (string memory);
@@ -199,13 +202,16 @@ interface IFraxGovernorOmega {
     function votingPeriod() external view returns (uint256);
 
     error BadBatchArgs();
-    error CannotPropose();
     error CannotCancelOptimisticTransaction();
+    error CannotPropose();
+    error CannotRelay();
     error DelegateWithAlpha();
     error DisallowedTarget(address target);
     error NonceReserved();
     error NotTimelockController();
     error ProposalAlreadyCanceled();
+    error SafeAlreadyOnAllowlist(address safe);
+    error SafeNotOnAllowlist(address safe);
     error TransactionAlreadyApproved(bytes32 txHash);
     error WrongNonce();
     error WrongProposalState();

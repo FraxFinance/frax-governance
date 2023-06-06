@@ -1,92 +1,92 @@
-6,11c6,8
-< import { Governor } from "@openzeppelin/contracts/governance/Governor.sol";
-< import {
-<     GovernorCompatibilityBravo
-< } from "@openzeppelin/contracts/governance/compatibility/GovernorCompatibilityBravo.sol";
-< import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-< import { GovernorVotesQuorumFraction } from "./GovernorVotesQuorumFraction.sol";
+6,9c6,11
+< import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+< import {Governor} from "@openzeppelin/contracts/governance/Governor.sol";
+< import {GovernorCompatibilityBravo} from "@openzeppelin/contracts/governance/compatibility/GovernorCompatibilityBravo.sol";
+< import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 ---
-> import {Governor} from "@openzeppelin/contracts/governance/Governor.sol";
-> import {GovernorCompatibilityBravo} from "@openzeppelin/contracts/governance/compatibility/GovernorCompatibilityBravo.sol";
-> import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-24c21,22
-< abstract contract GovernorCountingFractional is GovernorVotesQuorumFraction {
----
-> abstract contract GovernorCountingFractional is Governor {
->
-43,60d40
-<     constructor(
-<         address veFxsVotingDelegation,
-<         string memory _name,
-<         uint256 quorumNumeratorValue,
-<         uint256 initialVotingDelay,
-<         uint256 initialVotingPeriod,
-<         uint256 initialProposalThreshold
-<     )
-<         GovernorVotesQuorumFraction(
-<             veFxsVotingDelegation,
-<             _name,
-<             quorumNumeratorValue,
-<             initialVotingDelay,
-<             initialVotingPeriod,
-<             initialProposalThreshold
-<         )
-<     {}
+> import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+> import { Governor } from "./Governor.sol";
+> import {
+>     GovernorCompatibilityBravo
+> } from "@openzeppelin/contracts/governance/compatibility/GovernorCompatibilityBravo.sol";
+> import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+23d24
 <
-88,90c68,77
-<     function proposalVotes(
-<         uint256 proposalId
-<     ) public view virtual returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) {
+77,86c78,80
+<     function proposalVotes(uint256 proposalId)
+<     public
+<     view
+<     virtual
+<     returns (
+<         uint256 againstVotes,
+<         uint256 forVotes,
+<         uint256 abstainVotes
+<     )
+<     {
 ---
->     function proposalVotes(uint256 proposalId)
->     public
->     view
->     virtual
->     returns (
->         uint256 againstVotes,
->         uint256 forVotes,
->         uint256 abstainVotes
->     )
->     {
-161c148,153
-<     function _countVoteNominal(uint256 proposalId, address account, uint128 totalWeight, uint8 support) internal {
+>     function proposalVotes(
+>         uint256 proposalId
+>     ) public view virtual returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) {
+157,162c151
+<     function _countVoteNominal(
+<         uint256 proposalId,
+<         address account,
+<         uint128 totalWeight,
+<         uint8 support
+<     ) internal {
 ---
->     function _countVoteNominal(
->         uint256 proposalId,
->         address account,
->         uint128 totalWeight,
->         uint8 support
->     ) internal {
-211,212c203,204
-<         uint128 _newWeight = _againstVotes + _forVotes + _abstainVotes;
-<         require (_newWeight == totalWeight, "GovernorCountingFractional: votes must match total voting weight");
+>     function _countVoteNominal(uint256 proposalId, address account, uint128 totalWeight, uint8 support) internal {
+231c220
+<     uint256 constant internal _MASK_HALF_WORD_RIGHT = 0xffffffffffffffffffffffffffffffff; // 128 bits of 0's, 128 bits of 1's
 ---
->         uint128 _existingWeight = _proposalVotersWeightCast[proposalId][account];
->         uint256 _newWeight = uint256(_againstVotes) + _forVotes + _abstainVotes + _existingWeight;
-214c206
-<         _proposalVotersWeightCast[proposalId][account] = _newWeight;
+>     uint256 internal constant _MASK_HALF_WORD_RIGHT = 0xffffffffffffffffffffffffffffffff; // 128 bits of 0's, 128 bits of 1's
+238,246c227,229
+<     function _decodePackedVotes(bytes memory voteData)
+<     internal
+<     pure
+<     returns (
+<         uint128 againstVotes,
+<         uint128 forVotes,
+<         uint128 abstainVotes
+<     )
+<     {
 ---
->         require(_newWeight <= totalWeight, "GovernorCountingFractional: vote would exceed weight");
-215a208,211
->         // It's safe to downcast here because we've just confirmed that
->         // _newWeight <= totalWeight, and totalWeight is a uint128.
->         _proposalVotersWeightCast[proposalId][account] = uint128(_newWeight);
->
-226c222
-<     uint256 internal constant _VOTEMASK = 0xffffffffffffffffffffffffffffffff; // 128 bits of 0's, 128 bits of 1's
+>     function _decodePackedVotes(
+>         bytes memory voteData
+>     ) internal pure returns (uint128 againstVotes, uint128 forVotes, uint128 abstainVotes) {
+314,324c297,308
+<                 // Perform bitwise AND operation on the data in the second word of
+<                 // `params` with a mask of 128 zeros followed by 128 ones, i.e. take
+<                 // the last 128 bits of `params`.
+<                 _MASK_HALF_WORD_RIGHT,
+<                 // Load the data from memory at the returned address.
+<                 mload(
+<                 // Skip the first 64 bytes (0x40):
+<                 //   32 bytes encoding the length of the bytes array.
+<                 //   32 bytes for the first word in the params
+<                 // Return the memory address for the last word in params.
+<                 add(params, 0x40)
 ---
->     uint256 constant internal _VOTEMASK = 0xffffffffffffffffffffffffffffffff; // 128 bits of 0's, 128 bits of 1's
-233,235c229,237
-<     function _decodePackedVotes(
-<         bytes memory voteData
-<     ) internal pure returns (uint128 againstVotes, uint128 forVotes, uint128 abstainVotes) {
+>                     // Perform bitwise AND operation on the data in the second word of
+>                     // `params` with a mask of 128 zeros followed by 128 ones, i.e. take
+>                     // the last 128 bits of `params`.
+>                     _MASK_HALF_WORD_RIGHT,
+>                     // Load the data from memory at the returned address.
+>                     mload(
+>                         // Skip the first 64 bytes (0x40):
+>                         //   32 bytes encoding the length of the bytes array.
+>                         //   32 bytes for the first word in the params
+>                         // Return the memory address for the last word in params.
+>                         add(params, 0x40)
+>                     )
+326d309
+<                 )
+329,332c312
+<             require(
+<                 fractionalVoteNonce[voter] == nonce,
+<                 "GovernorCountingFractional: signature has already been used"
+<             );
 ---
->     function _decodePackedVotes(bytes memory voteData)
->     internal
->     pure
->     returns (
->         uint128 againstVotes,
->         uint128 forVotes,
->         uint128 abstainVotes
->     )
->     {
+>             require(fractionalVoteNonce[voter] == nonce, "GovernorCountingFractional: signature has already been used");
+345d324
+<

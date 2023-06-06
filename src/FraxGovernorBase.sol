@@ -24,8 +24,12 @@ pragma solidity ^0.8.19;
 // ====================================================================
 
 import { Checkpoints } from "@openzeppelin/contracts/utils/Checkpoints.sol";
-import { GovernorCountingFractional, SafeCast } from "./GovernorCountingFractional.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import { Governor, IGovernor } from "./governor/Governor.sol";
+import { GovernorCountingFractional, SafeCast } from "./governor/GovernorCountingFractional.sol";
+import { GovernorSettings } from "./governor/GovernorSettings.sol";
+import { GovernorVotes, IVotes } from "./governor/GovernorVotesQuorumFraction.sol";
+import { GovernorVotesQuorumFraction } from "./governor/GovernorVotesQuorumFraction.sol";
 import { IVeFxs } from "./interfaces/IVeFxs.sol";
 
 struct ConstructorParams {
@@ -43,7 +47,7 @@ struct ConstructorParams {
 /// @title FraxGovernorBase
 /// @author Jon Walch (Frax Finance) https://github.com/jonwalch
 /// @notice An abstract contract which contains the shared core logic and storage for FraxGovernorAlpha and FraxGovernorOmega
-abstract contract FraxGovernorBase is GovernorCountingFractional {
+abstract contract FraxGovernorBase is GovernorSettings, GovernorVotesQuorumFraction, GovernorCountingFractional {
     using SafeCast for *;
     using Checkpoints for Checkpoints.Trace224;
 
@@ -80,14 +84,10 @@ abstract contract FraxGovernorBase is GovernorCountingFractional {
     constructor(
         ConstructorParams memory params
     )
-        GovernorCountingFractional(
-            params.veFxsVotingDelegation,
-            params._name,
-            params.quorumNumeratorValue,
-            params.initialVotingDelay,
-            params.initialVotingPeriod,
-            params.initialProposalThreshold
-        )
+        Governor(params._name)
+        GovernorSettings(params.initialVotingDelay, params.initialVotingPeriod, params.initialProposalThreshold)
+        GovernorVotes(IVotes(params.veFxsVotingDelegation))
+        GovernorVotesQuorumFraction(params.quorumNumeratorValue)
     {
         VE_FXS = IVeFxs(params.veFxs);
         _updateShortCircuitNumerator(params.initialShortCircuitNumerator);
@@ -185,7 +185,9 @@ abstract contract FraxGovernorBase is GovernorCountingFractional {
     /// @notice The ```_quorumReached``` function is called by state() to check for early proposal success
     /// @param proposalId Proposal ID
     /// @return isQuorum Represents if quorum was reached or not
-    function _quorumReached(uint256 proposalId) internal view override returns (bool isQuorum) {
+    function _quorumReached(
+        uint256 proposalId
+    ) internal view override(Governor, GovernorCountingFractional) returns (bool isQuorum) {
         (uint256 againstVoteWeight, uint256 forVoteWeight, uint256 abstainVoteWeight) = proposalVotes(proposalId);
         uint256 larger = againstVoteWeight > forVoteWeight ? againstVoteWeight : forVoteWeight;
 
@@ -233,7 +235,7 @@ abstract contract FraxGovernorBase is GovernorCountingFractional {
         });
     }
 
-    function COUNTING_MODE() public pure override returns (string memory) {
+    function COUNTING_MODE() public pure override(IGovernor, GovernorCountingFractional) returns (string memory) {
         return "support=bravo&quorum=against,abstain&quorum=for,abstain&params=fractional";
     }
 
@@ -282,7 +284,9 @@ abstract contract FraxGovernorBase is GovernorCountingFractional {
     /// @dev Only supports historical quorum values for proposals that actually exist at ```timepoint```
     /// @param timepoint A block.timestamp corresponding to a proposal snapshot
     /// @return quorumAtTimepoint Quorum value at ```timepoint```
-    function quorum(uint256 timepoint) public view override returns (uint256 quorumAtTimepoint) {
+    function quorum(
+        uint256 timepoint
+    ) public view override(IGovernor, GovernorVotesQuorumFraction) returns (uint256 quorumAtTimepoint) {
         uint256 snapshotBlockNumber = $snapshotTimestampToSnapshotBlockNumber[timepoint];
         if (snapshotBlockNumber == 0 || snapshotBlockNumber >= block.number) revert InvalidTimepoint();
 
@@ -291,7 +295,67 @@ abstract contract FraxGovernorBase is GovernorCountingFractional {
             quorumDenominator();
     }
 
+    /// @notice The ```bulkCastVote``` function allows the caller to vote on many proposals at once
+    /// @param proposalId An array of proposalId
+    /// @param support An array of support
+    function bulkCastVote(uint256[] calldata proposalId, uint8[] calldata support) external {
+        uint256 proposalIdsLength = proposalId.length;
+        if (proposalIdsLength != support.length) {
+            revert ParamLengthsNotEqual();
+        }
+
+        for (uint256 i = 0; i < proposalIdsLength; ++i) {
+            castVote({ proposalId: proposalId[i], support: support[i] });
+        }
+    }
+
+    /// Boilerplate overrides
+
+    /**
+     * @notice Cast a vote with a reason and additional encoded parameters using
+     * the user's cryptographic signature.
+     *
+     * Emits a {VoteCast} or {VoteCastWithParams} event depending on the length
+     * of params.
+     *
+     * @dev If casting a fractional vote via `params`, the voter's current nonce
+     * must be appended to the `params` as the last 16 bytes and included in the
+     * signature. I.e., the params used when constructing the signature would be:
+     *
+     *   abi.encodePacked(againstVotes, forVotes, abstainVotes, nonce)
+     *
+     * See {fractionalVoteNonce} and {_castVote} for more information.
+     */
+    function castVoteWithReasonAndParamsBySig(
+        uint256 proposalId,
+        uint8 support,
+        string calldata reason,
+        bytes memory params,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public virtual override(Governor, GovernorCountingFractional) returns (uint256) {
+        return
+            GovernorCountingFractional.castVoteWithReasonAndParamsBySig({
+                proposalId: proposalId,
+                support: support,
+                reason: reason,
+                params: params,
+                v: v,
+                r: r,
+                s: s
+            });
+    }
+
+    /**
+     * @dev See {Governor-proposalThreshold}.
+     */
+    function proposalThreshold() public view virtual override(Governor, GovernorSettings) returns (uint256) {
+        return GovernorSettings.proposalThreshold();
+    }
+
     error InvalidTimepoint();
+    error ParamLengthsNotEqual();
     error SenderVotingWeightBelowProposalThreshold();
     error ShortCircuitNumeratorGreaterThanQuorumDenominator();
     error Unauthorized();

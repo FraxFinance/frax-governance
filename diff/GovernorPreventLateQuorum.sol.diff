@@ -1,0 +1,40 @@
+4c4
+< pragma solidity ^0.8.0;
+---
+> pragma solidity ^0.8.19;
+6,7c6,7
+< import "../Governor.sol";
+< import "../../utils/math/Math.sol";
+---
+> import { Governor } from "./Governor.sol";
+> import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+21c21
+<     uint64 private _voteExtension;
+---
+>     uint64 public $voteExtension;
+24c24
+<     mapping(uint256 => uint64) private _extendedDeadlines;
+---
+>     mapping(uint256 => uint64) public $extendedDeadlines;
+46c46
+<         return Math.max(super.proposalDeadline(proposalId), _extendedDeadlines[proposalId]);
+---
+>         return Math.max(super.proposalDeadline(proposalId), $extendedDeadlines[proposalId]);
+64c64
+<         if (_extendedDeadlines[proposalId] == 0 && _quorumReached(proposalId)) {
+---
+>         if ($extendedDeadlines[proposalId] == 0 && _quorumReached(proposalId)) {
+71c71
+<             _extendedDeadlines[proposalId] = extendedDeadline;
+---
+>             $extendedDeadlines[proposalId] = extendedDeadline;
+82c82
+<         return _voteExtension;
+---
+>         return $voteExtension;
+102,103c102,103
+<         emit LateQuorumVoteExtensionSet(_voteExtension, newVoteExtension);
+<         _voteExtension = newVoteExtension;
+---
+>         emit LateQuorumVoteExtensionSet($voteExtension, newVoteExtension);
+>         $voteExtension = newVoteExtension;

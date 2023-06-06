@@ -17,6 +17,8 @@ interface ISafe {
 
     function isOwner(address) external returns (bool);
 
+    function getThreshold() external view returns (uint256);
+
     /// @dev Returns hash to be signed by owners.
     /// @param to Destination address.
     /// @param value Ether value.

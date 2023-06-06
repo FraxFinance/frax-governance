@@ -10,8 +10,7 @@ import {
     deployFraxGovernorOmega,
     deployFraxGuard,
     deployTimelockController,
-    deployVeFxsVotingDelegation,
-    SafeConfig
+    deployVeFxsVotingDelegation
 } from "script/DeployFraxGovernance.s.sol";
 import "test/mock/FxsMock.sol";
 
@@ -51,8 +50,8 @@ contract DeployTestnet is BaseScript {
         tc.grantRole(tc.CANCELLER_ROLE(), _address);
         tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), deployer);
 
-        SafeConfig[] memory _safeConfigs = new SafeConfig[](1);
-        _safeConfigs[0] = SafeConfig({ safe: Constants.ARBITRUM_TEST_MULTISIG_FINAL4, requiredSignatures: 3 });
+        address[] memory _safeAllowlist = new address[](1);
+        _safeAllowlist[0] = Constants.ARBITRUM_TEST_MULTISIG_FINAL7;
 
         (
             address _addressOmega,
@@ -61,7 +60,7 @@ contract DeployTestnet is BaseScript {
         ) = deployFraxGovernorOmega(
                 Constants.ARBITRUM_TEST_MOCK_VE_FXS,
                 _addressVoting,
-                _safeConfigs,
+                _safeAllowlist,
                 _addressTimelock
             );
         console.log("_constructorParamsOmega:", string(abi.encode(_constructorParamsOmega)));

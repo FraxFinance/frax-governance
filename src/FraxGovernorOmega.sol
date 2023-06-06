@@ -30,15 +30,11 @@ import { FraxGovernorBase, ConstructorParams as FraxGovernorBaseParams } from ".
 import { IFraxGovernorOmega } from "./interfaces/IFraxGovernorOmega.sol";
 import { Enum, ISafe } from "./interfaces/ISafe.sol";
 
-struct SafeConfig {
-    address safe;
-    uint256 requiredSignatures;
-}
-
 struct ConstructorParams {
+    string name;
     address veFxs;
     address veFxsVotingDelegation;
-    SafeConfig[] safeConfigs;
+    address[] safeAllowlist;
     address payable timelockController;
     uint256 initialVotingDelay;
     uint256 initialVotingPeriod;
@@ -53,37 +49,29 @@ struct ConstructorParams {
 /// @notice A Governance contract with intended use as a Gnosis Safe signer. The only Safe interaction this contract does is calling GnosisSafe::approveHash().
 /// @notice Supports optimistic proposals for Gnosis Safe transactions, that default to ```ProposalState.Succeeded```, through ```addTransaction()```.
 contract FraxGovernorOmega is FraxGovernorBase {
-    /// @notice The address of the FraxGovernorAlpha contract
+    /// @notice The address of the TimelockController contract
     address public immutable TIMELOCK_CONTROLLER;
 
     /// @notice Configuration and allowlist for Gnosis Safes approved for use with FraxGovernorOmega
-    mapping(address safe => uint256 requiredSignatures) public $safeRequiredSignatures;
-
-    /// @notice Lookup from optimistic proposal proposal id to Gnosis Safe Transaction hash
-    mapping(uint256 proposalId => bytes32 txHash) public $optimisticProposalIdToTxHash;
+    mapping(address safe => uint256 status) public $safeAllowlist;
 
     /// @notice Lookup from Gnosis Safe to nonce to corresponding transaction hash
     mapping(address safe => mapping(uint256 safeNonce => bytes32 txHash)) public $gnosisSafeToNonceToTxHash;
 
-    /// @notice The ```SafeConfigUpdate``` event is emitted when governance changes Gnosis Safe configuration
-    /// @param safe The address of the Gnosis Safe
-    /// @param oldRequiredSignatures The old amount of required Gnosis Safe signatures to put up for voting
-    /// @param newRequiredSignatures The new amount of required Gnosis Safe signatures to put up for voting
-    event SafeConfigUpdate(address indexed safe, uint256 oldRequiredSignatures, uint256 newRequiredSignatures);
+    /// @notice The ```AddSafeToAllowlist``` event is emitted when governance adds a safe to the allowlist
+    /// @param safe The address of the Gnosis Safe added
+    event AddSafeToAllowlist(address indexed safe);
+
+    /// @notice The ```RemoveSafeFromAllowlist``` event is emitted when governance removes a safe from the allowlist
+    /// @param safe The address of the Gnosis Safe removed
+    event RemoveSafeFromAllowlist(address indexed safe);
 
     /// @notice The ```TransactionProposed``` event is emitted when a Frax Team optimistic proposal is put up for voting
     /// @param safe The address of the Gnosis Safe
     /// @param nonce The nonce corresponding to the safe for this proposal
     /// @param txHash The hash of the Gnosis Safe transaction
     /// @param proposalId The proposal id in FraxGovernorOmega
-    /// @param proposer The address that proposed the Transaction
-    event TransactionProposed(
-        address indexed safe,
-        uint256 nonce,
-        bytes32 txHash,
-        uint256 proposalId,
-        address indexed proposer
-    );
+    event TransactionProposed(address indexed safe, uint256 nonce, bytes32 indexed txHash, uint256 indexed proposalId);
 
     /// @notice The ```constructor``` function is called on deployment
     /// @param params ConstructorParams struct
@@ -94,7 +82,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
             FraxGovernorBaseParams({
                 veFxs: params.veFxs,
                 veFxsVotingDelegation: params.veFxsVotingDelegation,
-                _name: "FraxGovernorOmega",
+                _name: params.name,
                 initialVotingDelay: params.initialVotingDelay,
                 initialVotingPeriod: params.initialVotingPeriod,
                 initialProposalThreshold: params.initialProposalThreshold,
@@ -106,15 +94,8 @@ contract FraxGovernorOmega is FraxGovernorBase {
     {
         TIMELOCK_CONTROLLER = params.timelockController;
 
-        for (uint256 i = 0; i < params.safeConfigs.length; ++i) {
-            SafeConfig memory config = params.safeConfigs[i];
-            $safeRequiredSignatures[config.safe] = config.requiredSignatures;
-            emit SafeConfigUpdate({
-                safe: config.safe,
-                oldRequiredSignatures: 0,
-                newRequiredSignatures: config.requiredSignatures
-            });
-        }
+        // Assume safes at deploy time are properly configured for frxGov
+        _addSafesToAllowlist(params.safeAllowlist);
     }
 
     /// @notice The ```_requireOnlyGovernorAlpha``` function checks if the caller is FraxGovernorAlpha
@@ -122,22 +103,22 @@ contract FraxGovernorOmega is FraxGovernorBase {
         if (msg.sender != TIMELOCK_CONTROLLER) revert IFraxGovernorOmega.NotTimelockController();
     }
 
-    /// @notice The ```_requireAllowlist``` function checks if the safe has more than 0 requiredSignatures, which means it is allowlisted.
+    /// @notice The ```_requireAllowlist``` function checks if the safe is on the allowlist
     /// @param safe The address of the Gnosis Safe
     function _requireAllowlist(address safe) internal view {
-        if ($safeRequiredSignatures[safe] == 0) revert Unauthorized();
+        if ($safeAllowlist[safe] == 0) revert Unauthorized();
     }
 
     /// @notice The ```_requireEoaSignatures``` function checks if the provided signatures are EOA signatures
     /// @dev Disallow the ```v == 0```` and ```v == 1``` cases of ```safe.checkNSignatures()```. This ensures that the signatures passed
     /// @dev in are from EOAs and disallows the implicit signing from Omega with the ```msg.sender == currentOwner``` case.
-    /// @param safe The address of the Gnosis Safe
     /// @param signatures 1 or more packed signature data ({bytes32 r}{bytes32 s}{uint8 v})
-    function _requireEoaSignatures(address safe, bytes memory signatures) internal view {
+    /// @param requiredSignatures The expected amount of EOA signatures
+    function _requireEoaSignatures(bytes memory signatures, uint256 requiredSignatures) internal pure {
         uint8 v;
         uint256 i;
 
-        for (i = 0; i < $safeRequiredSignatures[safe]; ++i) {
+        for (i = 0; i < requiredSignatures; ++i) {
             // Taken from Gnosis Safe SignatureDecoder
             /// @solidity memory-safe-assembly
             assembly {
@@ -207,6 +188,16 @@ contract FraxGovernorOmega is FraxGovernorBase {
         revert IFraxGovernorOmega.CannotCancelOptimisticTransaction();
     }
 
+    /// @notice The ```relay``` function reverts when called
+    /// @dev This function has no use in Omega
+    function relay(
+        address, // target
+        uint256, // value
+        bytes calldata // data
+    ) external payable override {
+        revert IFraxGovernorOmega.CannotRelay();
+    }
+
     /// @notice The ```addTransaction``` function creates optimistic proposals that correspond to a Gnosis Safe Transaction that was initiated by the Frax Team
     /// @param teamSafe Address of allowlisted Gnosis Safe
     /// @param args TxHashArgs of the Gnosis Safe transaction
@@ -217,16 +208,23 @@ contract FraxGovernorOmega is FraxGovernorBase {
         IFraxGovernorOmega.TxHashArgs calldata args,
         bytes calldata signatures
     ) public returns (uint256 optimisticProposalId) {
-        _requireEoaSignatures({ safe: teamSafe, signatures: signatures });
+        _requireAllowlist(teamSafe);
+
         // This check stops EOA Safe owners from pushing txs through that skip the more stringent FraxGovernorAlpha
         // procedures. It disallows Omega from calling safe.approveHash() outside of the
         // addTransaction() / execute() / rejectTransaction() flow
         if (args.to == teamSafe) {
             revert IFraxGovernorOmega.DisallowedTarget(args.to);
         }
-        _requireAllowlist(teamSafe);
-        if ($gnosisSafeToNonceToTxHash[teamSafe][args._nonce] != 0) revert IFraxGovernorOmega.NonceReserved();
+
         ISafe safe = ISafe(teamSafe);
+        // Assuming proper configuration, safe has threshold of n + 1, where n is the number of EOA signers.
+        // Subtract by 1 so we're not including Omega, which is a signer.
+        uint256 requiredSignatures = safe.getThreshold() - 1;
+
+        _requireEoaSignatures({ signatures: signatures, requiredSignatures: requiredSignatures });
+
+        if ($gnosisSafeToNonceToTxHash[teamSafe][args._nonce] != 0) revert IFraxGovernorOmega.NonceReserved();
         if (args._nonce < safe.nonce()) revert IFraxGovernorOmega.WrongNonce();
 
         bytes32 txHash = _safeGetTransactionHash({ safe: safe, args: args });
@@ -235,7 +233,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
             dataHash: txHash,
             data: args.data,
             signatures: signatures,
-            requiredSignatures: $safeRequiredSignatures[teamSafe]
+            requiredSignatures: requiredSignatures
         });
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _optimisticProposalArgs({
@@ -245,15 +243,13 @@ contract FraxGovernorOmega is FraxGovernorBase {
 
         optimisticProposalId = _propose({ targets: targets, values: values, calldatas: calldatas, description: "" });
 
-        $optimisticProposalIdToTxHash[optimisticProposalId] = txHash;
         $gnosisSafeToNonceToTxHash[teamSafe][args._nonce] = txHash;
 
         emit TransactionProposed({
             safe: teamSafe,
             nonce: args._nonce,
             txHash: txHash,
-            proposalId: optimisticProposalId,
-            proposer: msg.sender
+            proposalId: optimisticProposalId
         });
     }
 
@@ -338,10 +334,14 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @param teamSafe Address of allowlisted Gnosis Safe
     /// @param signatures EOA signatures for a 0 ether transfer Gnosis Safe transaction with the current nonce
     function abortTransaction(address teamSafe, bytes calldata signatures) external {
-        _requireEoaSignatures({ safe: teamSafe, signatures: signatures });
         _requireAllowlist(teamSafe);
-
         ISafe safe = ISafe(teamSafe);
+        // Assuming proper configuration, safe has threshold of n + 1, where n is the number of EOA signers.
+        // Subtract by 1 so we're not including Omega, which is a signer.
+        uint256 requiredSignatures = safe.getThreshold() - 1;
+
+        _requireEoaSignatures({ signatures: signatures, requiredSignatures: requiredSignatures });
+
         uint256 nonce = safe.nonce();
 
         bytes32 rejectTxHash = safe.getTransactionHash({
@@ -362,7 +362,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
             dataHash: rejectTxHash,
             data: "",
             signatures: signatures,
-            requiredSignatures: $safeRequiredSignatures[teamSafe]
+            requiredSignatures: requiredSignatures
         });
 
         bytes32 originalTxHash = $gnosisSafeToNonceToTxHash[teamSafe][nonce];
@@ -452,24 +452,33 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _updateShortCircuitNumerator(newShortCircuitNumerator);
     }
 
-    /// @notice The ```updateSafes``` function is called by governance to allowlist safes and set the amount of required signatures needed to add the transaction with addTransaction()
+    function _addSafesToAllowlist(address[] memory safes) internal {
+        for (uint256 i = 0; i < safes.length; ++i) {
+            if ($safeAllowlist[safes[i]] == 1) revert IFraxGovernorOmega.SafeAlreadyOnAllowlist(safes[i]);
+            $safeAllowlist[safes[i]] = 1;
+            emit AddSafeToAllowlist(safes[i]);
+        }
+    }
+
+    /// @notice The ```addSafesToAllowlist``` function is called by governance to allowlist safes for addTransaction()
     /// @notice Safes are expected to be properly configured before calling this function
     /// @notice Proper configuration entails having: the FraxGuard set, FraxGovernorOmega set as a signer and FraxGovernorAlpha's TimelockController as a Module
-    /// @dev Can use to add or remove safes. See TestFraxGovernorUpgrade.t.sol for upgrade path
-    /// @dev Set config.requiredSignatures to 0 to remove the Safe from the allowlist
-    /// @param safeConfigs Array of SafeConfig
-    function updateSafes(SafeConfig[] calldata safeConfigs) external {
+    /// @param safes Array of safe addresses to allowlist
+    function addSafesToAllowlist(address[] calldata safes) external {
+        _requireOnlyTimelockController();
+        _addSafesToAllowlist(safes);
+    }
+
+    /// @notice The ```removeSafesFromAllowlist``` function is called by governance to remove safes from the allowlist
+    /// @dev See TestFraxGovernorUpgrade.t.sol for upgrade path
+    /// @param safes Array of safe addresses to remove from allowlist
+    function removeSafesFromAllowlist(address[] calldata safes) external {
         _requireOnlyTimelockController();
 
-        for (uint256 i = 0; i < safeConfigs.length; ++i) {
-            SafeConfig calldata config = safeConfigs[i];
-            uint256 oldRequiredSignatures = $safeRequiredSignatures[config.safe];
-            $safeRequiredSignatures[config.safe] = config.requiredSignatures;
-            emit SafeConfigUpdate({
-                safe: config.safe,
-                oldRequiredSignatures: oldRequiredSignatures,
-                newRequiredSignatures: config.requiredSignatures
-            });
+        for (uint256 i = 0; i < safes.length; ++i) {
+            if ($safeAllowlist[safes[i]] == 0) revert IFraxGovernorOmega.SafeNotOnAllowlist(safes[i]);
+            delete $safeAllowlist[safes[i]];
+            emit RemoveSafeFromAllowlist(safes[i]);
         }
     }
 

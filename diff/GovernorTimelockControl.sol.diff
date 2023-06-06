@@ -1,96 +1,69 @@
-6,10c6,8
-< import "@openzeppelin/contracts/governance/extensions/IGovernorTimelock.sol";
-< import "@openzeppelin/contracts/governance/TimelockController.sol";
-< import { FraxGovernorBase, ConstructorParams as FraxGovernorBaseParams } from "./FraxGovernorBase.sol";
-< import { ConstructorParams as FraxGovernorAlphaParams } from "./FraxGovernorAlpha.sol";
-< import { Governor } from "./Governor.sol";
+6,8c6,8
+< import "./IGovernorTimelock.sol";
+< import "../Governor.sol";
+< import "../TimelockController.sol";
 ---
-> import "./IGovernorTimelock.sol";
-> import "../Governor.sol";
-> import "../TimelockController.sol";
-28,30c26,28
-< abstract contract GovernorTimelockControl is IGovernorTimelock, FraxGovernorBase {
-<     TimelockController public $timelock;
-<     mapping(uint256 => bytes32) public $timelockIds;
+> import "@openzeppelin/contracts/governance/extensions/IGovernorTimelock.sol";
+> import "@openzeppelin/contracts/governance/TimelockController.sol";
+> import { Governor } from "./Governor.sol";
+27,28c27,28
+<     TimelockController private _timelock;
+<     mapping(uint256 => bytes32) private _timelockIds;
 ---
-> abstract contract GovernorTimelockControl is IGovernorTimelock, Governor {
->     TimelockController private _timelock;
->     mapping(uint256 => bytes32) private _timelockIds;
-40,57c38,39
-<     constructor(
-<         FraxGovernorAlphaParams memory params
-<     )
-<         FraxGovernorBase(
-<             FraxGovernorBaseParams({
-<                 veFxs: params.veFxs,
-<                 veFxsVotingDelegation: params.veFxsVotingDelegation,
-<                 _name: "FraxGovernorAlpha",
-<                 initialVotingDelay: params.initialVotingDelay,
-<                 initialVotingPeriod: params.initialVotingPeriod,
-<                 initialProposalThreshold: params.initialProposalThreshold,
-<                 quorumNumeratorValue: params.quorumNumeratorValue,
-<                 initialVotingDelayBlocks: params.initialVotingDelayBlocks,
-<                 initialShortCircuitNumerator: params.initialShortCircuitNumerator
-<             })
-<         )
-<     {
-<         _updateTimelock(TimelockController(params.timelockController));
+>     TimelockController public $timelock;
+>     mapping(uint256 => bytes32) public $timelockIds;
+60c60
+<         bytes32 queueid = _timelockIds[proposalId];
 ---
->     constructor(TimelockController timelockAddress) {
->         _updateTimelock(timelockAddress);
-78c60
-<         bytes32 queueid = $timelockIds[proposalId];
+>         bytes32 queueid = $timelockIds[proposalId];
+63c63
+<         } else if (_timelock.isOperationDone(queueid)) {
 ---
->         bytes32 queueid = _timelockIds[proposalId];
-81c63
-<         } else if ($timelock.isOperationDone(queueid)) {
+>         } else if ($timelock.isOperationDone(queueid)) {
+65c65
+<         } else if (_timelock.isOperationPending(queueid)) {
 ---
->         } else if (_timelock.isOperationDone(queueid)) {
-83c65
-<         } else if ($timelock.isOperationPending(queueid)) {
+>         } else if ($timelock.isOperationPending(queueid)) {
+76c76
+<         return address(_timelock);
 ---
->         } else if (_timelock.isOperationPending(queueid)) {
-94c76
-<         return address($timelock);
+>         return address($timelock);
+83c83
+<         uint256 eta = _timelock.getTimestamp(_timelockIds[proposalId]);
 ---
->         return address(_timelock);
-101c83
-<         uint256 eta = $timelock.getTimestamp($timelockIds[proposalId]);
+>         uint256 eta = $timelock.getTimestamp($timelockIds[proposalId]);
+100,102c100,102
+<         uint256 delay = _timelock.getMinDelay();
+<         _timelockIds[proposalId] = _timelock.hashOperationBatch(targets, values, calldatas, 0, descriptionHash);
+<         _timelock.scheduleBatch(targets, values, calldatas, 0, descriptionHash, delay);
 ---
->         uint256 eta = _timelock.getTimestamp(_timelockIds[proposalId]);
-118,120c100,102
-<         uint256 delay = $timelock.getMinDelay();
-<         $timelockIds[proposalId] = $timelock.hashOperationBatch(targets, values, calldatas, 0, descriptionHash);
-<         $timelock.scheduleBatch(targets, values, calldatas, 0, descriptionHash, delay);
+>         uint256 delay = $timelock.getMinDelay();
+>         $timelockIds[proposalId] = $timelock.hashOperationBatch(targets, values, calldatas, 0, descriptionHash);
+>         $timelock.scheduleBatch(targets, values, calldatas, 0, descriptionHash, delay);
+113c113,114
+<         uint256 /* proposalId */,
 ---
->         uint256 delay = _timelock.getMinDelay();
->         _timelockIds[proposalId] = _timelock.hashOperationBatch(targets, values, calldatas, 0, descriptionHash);
->         _timelock.scheduleBatch(targets, values, calldatas, 0, descriptionHash, delay);
-131,132c113,114
-<         uint256,
-<         /* proposalId */ address[] memory targets,
+>         uint256,
+>         /* proposalId */
+119c120
+<         _timelock.executeBatch{value: msg.value}(targets, values, calldatas, 0, descriptionHash);
 ---
->         uint256 /* proposalId */,
->         address[] memory targets,
-137c119
-<         $timelock.executeBatch{ value: msg.value }(targets, values, calldatas, 0, descriptionHash);
+>         $timelock.executeBatch{ value: msg.value }(targets, values, calldatas, 0, descriptionHash);
+137,139c138,140
+<         if (_timelockIds[proposalId] != 0) {
+<             _timelock.cancel(_timelockIds[proposalId]);
+<             delete _timelockIds[proposalId];
 ---
->         _timelock.executeBatch{value: msg.value}(targets, values, calldatas, 0, descriptionHash);
-155,157c137,139
-<         if ($timelockIds[proposalId] != 0) {
-<             $timelock.cancel($timelockIds[proposalId]);
-<             delete $timelockIds[proposalId];
+>         if ($timelockIds[proposalId] != 0) {
+>             $timelock.cancel($timelockIds[proposalId]);
+>             delete $timelockIds[proposalId];
+149c150
+<         return address(_timelock);
 ---
->         if (_timelockIds[proposalId] != 0) {
->             _timelock.cancel(_timelockIds[proposalId]);
->             delete _timelockIds[proposalId];
-167c149
-<         return address($timelock);
+>         return address($timelock);
+163,164c164,165
+<         emit TimelockChange(address(_timelock), address(newTimelock));
+<         _timelock = newTimelock;
 ---
->         return address(_timelock);
-181,182c163,164
-<         emit TimelockChange(address($timelock), address(newTimelock));
-<         $timelock = newTimelock;
----
->         emit TimelockChange(address(_timelock), address(newTimelock));
->         _timelock = newTimelock;
+>         emit TimelockChange(address($timelock), address(newTimelock));
+>         $timelock = newTimelock;

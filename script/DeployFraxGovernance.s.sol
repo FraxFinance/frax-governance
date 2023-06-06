@@ -6,20 +6,17 @@ import { BaseScript } from "frax-std/BaseScript.sol";
 import { console } from "frax-std/FraxTest.sol";
 import { Constants } from "../script/Constants.sol";
 import { FraxGovernorAlpha, ConstructorParams as FraxAlphaGovernorParams } from "../src/FraxGovernorAlpha.sol";
-import {
-    FraxGovernorOmega,
-    ConstructorParams as FraxGovernorOmegaParams,
-    SafeConfig
-} from "../src/FraxGovernorOmega.sol";
+import { FraxGovernorOmega, ConstructorParams as FraxGovernorOmegaParams } from "../src/FraxGovernorOmega.sol";
 import { FraxGuard } from "../src/FraxGuard.sol";
 import { VeFxsVotingDelegation } from "../src/VeFxsVotingDelegation.sol";
 
 function deployVeFxsVotingDelegation(
     address _veFxs
 ) returns (address payable _address, bytes memory _constructorParams, string memory _contractName) {
+    string memory version = "1";
     _constructorParams = abi.encode(_veFxs);
     _contractName = "VeFxsVotingDelegation";
-    _address = payable(address(new VeFxsVotingDelegation(_veFxs)));
+    _address = payable(address(new VeFxsVotingDelegation(_veFxs, _contractName, version)));
 }
 
 function deployTimelockController(
@@ -38,44 +35,51 @@ function deployFraxGovernorAlpha(
     address _veFxsVotingDelegation,
     address payable _timelockController
 ) returns (address payable _address, bytes memory _constructorParams, string memory _contractName) {
+    string memory name = "FraxGovernorAlpha";
+    uint256 votingDelay = 2 days;
     FraxAlphaGovernorParams memory _params = FraxAlphaGovernorParams({
+        name: name,
         veFxs: _veFxs,
         veFxsVotingDelegation: _veFxsVotingDelegation,
         timelockController: _timelockController,
-        initialVotingDelay: 1 days,
-        initialVotingPeriod: 5 days,
-        initialProposalThreshold: Constants.INITIAL_PROPOSAL_THRESHOLD,
+        initialVotingDelay: votingDelay,
+        initialVotingDelayBlocks: votingDelay / 12,
+        initialVotingPeriod: 4 days,
+        initialProposalThreshold: 100_000e18,
         quorumNumeratorValue: 40,
-        initialVotingDelayBlocks: 1 days / 12,
-        initialShortCircuitNumerator: Constants.INITIAL_SHORT_CIRCUIT_THRESHOLD
+        initialShortCircuitNumerator: 100,
+        initialVoteExtension: 2 days
     });
 
     _constructorParams = abi.encode(_params);
-    _contractName = "FraxGovernorAlpha";
+    _contractName = name;
     _address = payable(address(new FraxGovernorAlpha(_params)));
 }
 
 function deployFraxGovernorOmega(
     address _veFxs,
     address _veFxsVotingDelegation,
-    SafeConfig[] memory _safeConfigs,
+    address[] memory _safeAllowlist,
     address payable _timelockController
 ) returns (address payable _address, bytes memory _constructorParams, string memory _contractName) {
+    string memory name = "FraxGovernorOmega";
+    uint256 votingDelay = 1 minutes;
     FraxGovernorOmegaParams memory _params = FraxGovernorOmegaParams({
+        name: name,
         veFxs: _veFxs,
         veFxsVotingDelegation: _veFxsVotingDelegation,
-        safeConfigs: _safeConfigs,
+        safeAllowlist: _safeAllowlist,
         timelockController: _timelockController,
-        initialVotingDelay: 1 minutes,
+        initialVotingDelay: votingDelay,
+        initialVotingDelayBlocks: votingDelay / 12,
         initialVotingPeriod: 2 days,
-        initialProposalThreshold: Constants.INITIAL_PROPOSAL_THRESHOLD,
+        initialProposalThreshold: type(uint256).max,
         quorumNumeratorValue: 4,
-        initialVotingDelayBlocks: 1 minutes / 12,
-        initialShortCircuitNumerator: Constants.INITIAL_SHORT_CIRCUIT_THRESHOLD
+        initialShortCircuitNumerator: 51
     });
 
     _constructorParams = abi.encode(_params);
-    _contractName = "FraxGovernorOmega";
+    _contractName = name;
     _address = payable(address(new FraxGovernorOmega(_params)));
 }
 
@@ -123,13 +127,13 @@ contract DeployFraxGovernance is BaseScript {
         tc.grantRole(tc.CANCELLER_ROLE(), _address);
         tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), deployer);
 
-        SafeConfig[] memory _safeConfigs = new SafeConfig[](2);
-        //        _safeConfigs[0] = SafeConfig({safe: address(0), requiredSignatures: 3}); //TODO: prod values
+        address[] memory _safeAllowlist = new address[](2);
+        //        _safeAllowlist[0] = address(0); //TODO: prod value
         (
             address _addressOmega,
             bytes memory _constructorParamsOmega /* string memory _contractNameOmega */,
 
-        ) = deployFraxGovernorOmega(Constants.VE_FXS, _addressVoting, _safeConfigs, _addressTimelock);
+        ) = deployFraxGovernorOmega(Constants.VE_FXS, _addressVoting, _safeAllowlist, _addressTimelock);
         console.log("_constructorParamsOmega:", string(abi.encode(_constructorParamsOmega)));
         console.logBytes(_constructorParamsOmega);
         console.log("_addressOmega:", _addressOmega);

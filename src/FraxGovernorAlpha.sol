@@ -23,12 +23,13 @@ pragma solidity ^0.8.19;
 
 // ====================================================================
 
-import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
-import { Governor } from "./Governor.sol";
-import { GovernorTimelockControl } from "./GovernorTimelockControl.sol";
-import { IFraxGovernorAlpha } from "./interfaces/IFraxGovernorAlpha.sol";
+import { FraxGovernorBase, ConstructorParams as FraxGovernorBaseParams } from "./FraxGovernorBase.sol";
+import { Governor, IGovernor } from "./governor/Governor.sol";
+import { GovernorPreventLateQuorum } from "./governor/GovernorPreventLateQuorum.sol";
+import { GovernorTimelockControl, TimelockController } from "./governor/GovernorTimelockControl.sol";
 
 struct ConstructorParams {
+    string name;
     address veFxs;
     address veFxsVotingDelegation;
     address payable timelockController;
@@ -38,15 +39,34 @@ struct ConstructorParams {
     uint256 quorumNumeratorValue;
     uint256 initialVotingDelayBlocks;
     uint256 initialShortCircuitNumerator;
+    uint64 initialVoteExtension;
 }
 
 /// @title FraxGovernorAlpha
 /// @author Jon Walch (Frax Finance) https://github.com/jonwalch
 /// @notice A Governance contract with its TimelockController set as a Gnosis Safe Module, giving it full control over the Safe(s).
-contract FraxGovernorAlpha is GovernorTimelockControl {
+contract FraxGovernorAlpha is FraxGovernorBase, GovernorTimelockControl, GovernorPreventLateQuorum {
     /// @notice The ```constructor``` function is called on deployment
     /// @param params ConstructorParams struct
-    constructor(ConstructorParams memory params) GovernorTimelockControl(params) {}
+    constructor(
+        ConstructorParams memory params
+    )
+        FraxGovernorBase(
+            FraxGovernorBaseParams({
+                veFxs: params.veFxs,
+                veFxsVotingDelegation: params.veFxsVotingDelegation,
+                _name: params.name,
+                initialVotingDelay: params.initialVotingDelay,
+                initialVotingPeriod: params.initialVotingPeriod,
+                initialProposalThreshold: params.initialProposalThreshold,
+                quorumNumeratorValue: params.quorumNumeratorValue,
+                initialVotingDelayBlocks: params.initialVotingDelayBlocks,
+                initialShortCircuitNumerator: params.initialShortCircuitNumerator
+            })
+        )
+        GovernorPreventLateQuorum(params.initialVoteExtension)
+        GovernorTimelockControl(TimelockController(params.timelockController))
+    {}
 
     /// @notice The ```propose``` function is similar to OpenZeppelin's propose() with minor changes
     /// @dev Proposals that interact with a Gnosis Safe need to use GnosisSafe::execTransactionFromModule()
@@ -86,7 +106,9 @@ contract FraxGovernorAlpha is GovernorTimelockControl {
     /// @dev Changes include: support for early success or failure using short circuit
     /// @param proposalId Proposal ID
     /// @return proposalState ProposalState enum
-    function state(uint256 proposalId) public view override returns (ProposalState proposalState) {
+    function state(
+        uint256 proposalId
+    ) public view override(Governor, GovernorTimelockControl) returns (ProposalState proposalState) {
         ProposalState currentState = _state(proposalId);
 
         if (currentState != ProposalState.Succeeded) {
@@ -151,5 +173,134 @@ contract FraxGovernorAlpha is GovernorTimelockControl {
         } else {
             return ProposalState.Defeated;
         }
+    }
+
+    /// Boilerplate overrides
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override(Governor, GovernorTimelockControl) returns (bool) {
+        return GovernorTimelockControl.supportsInterface(interfaceId);
+    }
+
+    /**
+     * @dev Overridden execute function that run the already queued proposal through the timelock.
+     */
+    function _execute(
+        uint256 proposalId,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) {
+        GovernorTimelockControl._execute(proposalId, targets, values, calldatas, descriptionHash);
+    }
+
+    /**
+     * @dev Overridden version of the {Governor-_cancel} function to cancel the timelocked proposal if it as already
+     * been queued.
+     */
+    // This function can reenter through the external call to the timelock, but we assume the timelock is trusted and
+    // well behaved (according to TimelockController) and this will not happen.
+    // slither-disable-next-line reentrancy-no-eth
+    function _cancel(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) returns (uint256) {
+        return
+            GovernorTimelockControl._cancel({
+                targets: targets,
+                values: values,
+                calldatas: calldatas,
+                descriptionHash: descriptionHash
+            });
+    }
+
+    /**
+     * @dev Address through which the governor executes action. In this case, the timelock.
+     */
+    function _executor() internal view override(Governor, GovernorTimelockControl) returns (address) {
+        return GovernorTimelockControl._executor();
+    }
+
+    /**
+     * @dev Returns the proposal deadline, which may have been extended beyond that set at proposal creation, if the
+     * proposal reached quorum late in the voting period. See {Governor-proposalDeadline}.
+     */
+    function proposalDeadline(
+        uint256 proposalId
+    ) public view override(IGovernor, Governor, GovernorPreventLateQuorum) returns (uint256) {
+        return GovernorPreventLateQuorum.proposalDeadline(proposalId);
+    }
+
+    /**
+     * @dev Casts a vote and detects if it caused quorum to be reached, potentially extending the voting period. See
+     * {Governor-_castVote}.
+     *
+     * May emit a {ProposalExtended} event.
+     */
+    function _castVote(
+        uint256 proposalId,
+        address account,
+        uint8 support,
+        string memory reason,
+        bytes memory params
+    ) internal override(Governor, GovernorPreventLateQuorum) returns (uint256) {
+        return
+            GovernorPreventLateQuorum._castVote({
+                proposalId: proposalId,
+                account: account,
+                support: support,
+                reason: reason,
+                params: params
+            });
+    }
+
+    /**
+     * @notice Cast a vote with a reason and additional encoded parameters using
+     * the user's cryptographic signature.
+     *
+     * Emits a {VoteCast} or {VoteCastWithParams} event depending on the length
+     * of params.
+     *
+     * @dev If casting a fractional vote via `params`, the voter's current nonce
+     * must be appended to the `params` as the last 16 bytes and included in the
+     * signature. I.e., the params used when constructing the signature would be:
+     *
+     *   abi.encodePacked(againstVotes, forVotes, abstainVotes, nonce)
+     *
+     * See {fractionalVoteNonce} and {_castVote} for more information.
+     */
+    function castVoteWithReasonAndParamsBySig(
+        uint256 proposalId,
+        uint8 support,
+        string calldata reason,
+        bytes memory params,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public virtual override(IGovernor, Governor, FraxGovernorBase) returns (uint256) {
+        return
+            FraxGovernorBase.castVoteWithReasonAndParamsBySig({
+                proposalId: proposalId,
+                support: support,
+                reason: reason,
+                params: params,
+                v: v,
+                r: r,
+                s: s
+            });
+    }
+
+    /**
+     * @dev See {Governor-proposalThreshold}.
+     */
+    function proposalThreshold() public view override(Governor, FraxGovernorBase) returns (uint256) {
+        return FraxGovernorBase.proposalThreshold();
     }
 }

@@ -70,7 +70,7 @@ contract VeFxsVotingDelegation is EIP712, IERC5805 {
 
     /// @notice The ```constructor``` function is called on deployment
     /// @param veFxs Address of veFXS contract
-    constructor(address veFxs) EIP712("VeFxsVotingDelegation", "1") {
+    constructor(address veFxs, string memory name, string memory version) EIP712(name, version) {
         VE_FXS = IVeFxs(veFxs);
     }
 
@@ -122,6 +122,7 @@ contract VeFxsVotingDelegation is EIP712, IERC5805 {
         uint256 voteDecay = expirationAdjustedSlope * timestamp;
         uint256 biasAtTimestamp = (expirationAdjustedBias > voteDecay) ? expirationAdjustedBias - voteDecay : 0;
 
+        // If all delegations are expired they have no voting weight. This differs from veFXS, which returns the locked FXS amount if it has not yet been withdrawn.
         delegatedWeight = expirationAdjustedFxs + (VOTE_WEIGHT_MULTIPLIER * biasAtTimestamp);
     }
 
@@ -130,7 +131,7 @@ contract VeFxsVotingDelegation is EIP712, IERC5805 {
     /// @param timestamp A block.timestamp, typically corresponding to a proposal snapshot
     /// @return votingWeight Voting weight corresponding to ```account```'s veFXS balance
     function _calculateVotingWeight(address voter, uint256 timestamp) internal view returns (uint256) {
-        // If lock is expired they have no voting weight
+        // If lock is expired they have no voting weight. This differs from veFXS, which returns the locked FXS amount if it has not yet been withdrawn.
         if (VE_FXS.locked(voter).end <= timestamp) return 0;
 
         uint256 firstDelegationTimestamp = $delegations[voter].firstDelegationTimestamp;

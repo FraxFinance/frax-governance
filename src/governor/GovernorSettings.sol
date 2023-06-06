@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.9.0-rc.0) (governance/extensions/GovernorSettings.sol)
+// OpenZeppelin Contracts (last updated v4.9.0) (governance/extensions/GovernorSettings.sol)
 
 pragma solidity ^0.8.0;
-
-// Disabling forgefmt to stay consistent with OZ's style.
-// forgefmt: disable-start
 
 import { Governor } from "./Governor.sol";
 
@@ -25,12 +22,7 @@ abstract contract GovernorSettings is Governor {
     /**
      * @dev Initialize the governance parameters.
      */
-    constructor(
-        string memory _name,
-        uint256 initialVotingDelay,
-        uint256 initialVotingPeriod,
-        uint256 initialProposalThreshold
-    ) Governor(_name) {
+    constructor(uint256 initialVotingDelay, uint256 initialVotingPeriod, uint256 initialProposalThreshold) {
         _setVotingDelay(initialVotingDelay);
         _setVotingPeriod(initialVotingPeriod);
         _setProposalThreshold(initialProposalThreshold);
@@ -116,4 +108,3 @@ abstract contract GovernorSettings is Governor {
         _proposalThreshold = newProposalThreshold;
     }
 }
-// forgefmt: disable-end

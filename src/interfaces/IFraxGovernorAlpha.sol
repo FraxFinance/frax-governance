@@ -2,11 +2,15 @@
 pragma solidity >=0.8.19;
 
 interface IFraxGovernorAlpha {
+    function $extendedDeadlines(uint256) external view returns (uint64);
+
     function $snapshotTimestampToSnapshotBlockNumber(uint256 snapshot) external view returns (uint256 blockNumber);
 
     function $timelock() external view returns (address);
 
     function $timelockIds(uint256) external view returns (bytes32);
+
+    function $voteExtension() external view returns (uint64);
 
     function $votingDelayBlocks() external view returns (uint256);
 
@@ -19,6 +23,8 @@ interface IFraxGovernorAlpha {
     function EXTENDED_BALLOT_TYPEHASH() external view returns (bytes32);
 
     function VE_FXS() external view returns (address);
+
+    function bulkCastVote(uint256[] memory proposalId, uint8[] memory support) external;
 
     function cancel(
         address[] memory targets,
@@ -72,6 +78,8 @@ interface IFraxGovernorAlpha {
         bytes32 descriptionHash
     ) external payable returns (uint256);
 
+    function fractionalVoteNonce(address) external view returns (uint128);
+
     function getVotes(address account, uint256 timepoint) external view returns (uint256);
 
     function getVotesWithParams(
@@ -88,6 +96,8 @@ interface IFraxGovernorAlpha {
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) external pure returns (uint256);
+
+    function lateQuorumVoteExtension() external view returns (uint64);
 
     function name() external view returns (string memory);
 
@@ -144,6 +154,8 @@ interface IFraxGovernorAlpha {
     function quorumNumerator() external view returns (uint256);
 
     function relay(address target, uint256 value, bytes memory data) external payable;
+
+    function setLateQuorumVoteExtension(uint64 newVoteExtension) external;
 
     function setProposalThreshold(uint256 newProposalThreshold) external;
 

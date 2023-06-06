@@ -1,5 +1,8 @@
-ds-test/=lib/frax-standard-solidity/lib/forge-std/lib/ds-test/src/
-forge-std/=lib/frax-standard-solidity/lib/forge-std/src/
-frax-std/=lib/frax-standard-solidity/src/
-@openzeppelin/=lib/openzeppelin-contracts/
-@gnosis.pm/=lib/safe-contracts/
+ds-test/=node_modules/ds-test/src/
+forge-std/=node_modules/forge-std/src/
+frax-std/=node_modules/frax-standard-solidity/src/
+@openzeppelin/=node_modules/openzeppelin-solidity/
+@gnosis.pm/=node_modules/@gnosis.pm/safe-contracts/
+solady/=node_modules/solady/src/
+safe-tools/=node_modules/safe-tools/src/
+safe-contracts/=node_modules/@gnosis.pm/safe-contracts/contracts/

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.9.0-rc.0) (governance/extensions/GovernorVotes.sol)
+// OpenZeppelin Contracts (last updated v4.9.0) (governance/extensions/GovernorVotes.sol)
 
 pragma solidity ^0.8.0;
 
-import { GovernorSettings } from "./GovernorSettings.sol";
+import { Governor } from "./Governor.sol";
 import { IERC5805, IVotes } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
@@ -12,16 +12,10 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  *
  * _Available since v4.3._
  */
-abstract contract GovernorVotes is GovernorSettings {
+abstract contract GovernorVotes is Governor {
     IERC5805 public token;
 
-    constructor(
-        IVotes tokenAddress,
-        string memory _name,
-        uint256 initialVotingDelay,
-        uint256 initialVotingPeriod,
-        uint256 initialProposalThreshold
-    ) GovernorSettings(_name, initialVotingDelay, initialVotingPeriod, initialProposalThreshold) {
+    constructor(IVotes tokenAddress) {
         token = IERC5805(address(tokenAddress));
     }
 

@@ -1,136 +1,354 @@
-6,7c6,15
-< // Disabling forgefmt to stay consistent with OZ's style.
-< // forgefmt: disable-start
+< import "../token/ERC721/IERC721Receiver.sol";
+< import "../token/ERC1155/IERC1155Receiver.sol";
+< import "../utils/cryptography/ECDSA.sol";
+< import "../utils/cryptography/EIP712.sol";
+< import "../utils/introspection/ERC165.sol";
+< import "../utils/math/SafeCast.sol";
+< import "../utils/structs/DoubleEndedQueue.sol";
+< import "../utils/Address.sol";
+< import "../utils/Context.sol";
+< import "./IGovernor.sol";
 ---
-> import "../token/ERC721/IERC721Receiver.sol";
-> import "../token/ERC1155/IERC1155Receiver.sol";
-> import "../utils/cryptography/ECDSA.sol";
-> import "../utils/cryptography/EIP712.sol";
-> import "../utils/introspection/ERC165.sol";
-> import "../utils/math/SafeCast.sol";
-> import "../utils/structs/DoubleEndedQueue.sol";
-> import "../utils/Address.sol";
-> import "../utils/Context.sol";
-> import "./IGovernor.sol";
-9,19d16
-< import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-< import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
-< import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-< import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-< import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-< import "@openzeppelin/contracts/utils/math/SafeCast.sol";
-< import "@openzeppelin/contracts/utils/structs/DoubleEndedQueue.sol";
-< import "@openzeppelin/contracts/utils/Address.sol";
-< import "@openzeppelin/contracts/utils/Context.sol";
-< import "./interfaces/IGovernor.sol";
-<
-36c33
-<     keccak256("ExtendedBallot(uint256 proposalId,uint8 support,string reason,bytes params)");
+> import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+> import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+> import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+> import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+> import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+> import "@openzeppelin/contracts/utils/math/SafeCast.sol";
+> import "@openzeppelin/contracts/utils/structs/DoubleEndedQueue.sol";
+> import "@openzeppelin/contracts/utils/Address.sol";
+> import "@openzeppelin/contracts/utils/Context.sol";
+> import "@openzeppelin/contracts/governance/IGovernor.sol";
+32,33c32
+<     bytes32 public constant EXTENDED_BALLOT_TYPEHASH =
+<         keccak256("ExtendedBallot(uint256 proposalId,uint8 support,string reason,bytes params)");
 ---
->         keccak256("ExtendedBallot(uint256 proposalId,uint8 support,string reason,bytes params)");
-37a35
->     // solhint-disable var-name-mixedcase
-38a37,38
->         // --- start retyped from Timers.BlockNumber at offset 0x00 ---
->         uint64 voteStart;
-40,41c40,44
-<         uint40 voteStart;
-<         uint40 voteEnd;
+>     bytes32 public constant EXTENDED_BALLOT_TYPEHASH = keccak256("ExtendedBallot(uint256 proposalId,uint8 support,string reason,bytes params)");
+35d33
+<     // solhint-disable var-name-mixedcase
+37,38d34
+<         // --- start retyped from Timers.BlockNumber at offset 0x00 ---
+<         uint64 voteStart;
+40,44c36,37
+<         bytes4 __gap_unused0;
+<         // --- start retyped from Timers.BlockNumber at offset 0x20 ---
+<         uint64 voteEnd;
+<         bytes24 __gap_unused1;
+<         // --- Remaining fields starting at offset 0x40 ---------------
 ---
->         bytes4 __gap_unused0;
->         // --- start retyped from Timers.BlockNumber at offset 0x20 ---
->         uint64 voteEnd;
->         bytes24 __gap_unused1;
->         // --- Remaining fields starting at offset 0x40 ---------------
-44a48
->     // solhint-enable var-name-mixedcase
-49c53
-<     mapping(uint256 => ProposalCore) public proposals;
+>         uint40 voteStart;
+>         uint40 voteEnd;
+48d40
+<     // solhint-enable var-name-mixedcase
+53c45
+<     mapping(uint256 => ProposalCore) private _proposals;
 ---
->     mapping(uint256 => ProposalCore) private _proposals;
-98,99c102,103
-<         this.castVoteWithReasonAndParamsBySig.selector ^
-<         this.getVotesWithParams.selector;
+>     mapping(uint256 => ProposalCore) public proposals;
+76c68
+<             while (_governanceCall.popFront() != msgDataHash) {}
 ---
->             this.castVoteWithReasonAndParamsBySig.selector ^
->             this.getVotesWithParams.selector;
-103,105c107,109
-<         type(IERC6372).interfaceId ^
-<         governorCancelId ^
-<         governorParamsId;
+>             while (_governanceCall.popFront() != msgDataHash) { }
+101,103c93
+<         bytes4 governorParamsId = this.castVoteWithReasonAndParams.selector ^
+<             this.castVoteWithReasonAndParamsBySig.selector ^
+<             this.getVotesWithParams.selector;
 ---
->             type(IERC6372).interfaceId ^
->             governorCancelId ^
->             governorParamsId;
-113,117c117,121
-<         interfaceId == governor43Id ||
-<         interfaceId == governor46Id ||
-<         interfaceId == governorCancelId ||
-<         interfaceId == type(IERC1155Receiver).interfaceId ||
-<         super.supportsInterface(interfaceId);
+>         bytes4 governorParamsId = this.castVoteWithReasonAndParams.selector ^ this.castVoteWithReasonAndParamsBySig.selector ^ this.getVotesWithParams.selector;
+106,109c96
+<         bytes4 governor43Id = type(IGovernor).interfaceId ^
+<             type(IERC6372).interfaceId ^
+<             governorCancelId ^
+<             governorParamsId;
 ---
->             interfaceId == governor43Id ||
->             interfaceId == governor46Id ||
->             interfaceId == governorCancelId ||
->             interfaceId == type(IERC1155Receiver).interfaceId ||
->             super.supportsInterface(interfaceId);
-160c164
-<         ProposalCore storage proposal = proposals[proposalId];
+>         bytes4 governor43Id = type(IGovernor).interfaceId ^ type(IERC6372).interfaceId ^ governorCancelId ^ governorParamsId;
+116,121c103
+<         return
+<             interfaceId == governor43Id ||
+<             interfaceId == governor46Id ||
+<             interfaceId == governorCancelId ||
+<             interfaceId == type(IERC1155Receiver).interfaceId ||
+<             super.supportsInterface(interfaceId);
 ---
->         ProposalCore storage proposal = _proposals[proposalId];
-206c210
-<         return proposals[proposalId].voteStart;
+>         return interfaceId == governor43Id || interfaceId == governor46Id || interfaceId == governorCancelId || interfaceId == type(IERC1155Receiver).interfaceId || super.supportsInterface(interfaceId);
+151,156c133
+<     function hashProposal(
+<         address[] memory targets,
+<         uint256[] memory values,
+<         bytes[] memory calldatas,
+<         bytes32 descriptionHash
+<     ) public pure virtual override returns (uint256) {
 ---
->         return _proposals[proposalId].voteStart;
-213c217
-<         return proposals[proposalId].voteEnd;
+>     function hashProposal(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash) public pure virtual override returns (uint256) {
+164c141
+<         ProposalCore storage proposal = _proposals[proposalId];
 ---
->         return _proposals[proposalId].voteEnd;
-220c224
-<         return proposals[proposalId].proposer;
+>         ProposalCore storage proposal = proposals[proposalId];
+210c187
+<         return _proposals[proposalId].voteStart;
 ---
->         return _proposals[proposalId].proposer;
-283c287
-<         require(proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
+>         return proposals[proposalId].voteStart;
+217c194
+<         return _proposals[proposalId].voteEnd;
 ---
->         require(_proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
-288,293c292,299
-<         proposals[proposalId] = ProposalCore({
-<         proposer: proposer,
-<         voteStart: SafeCast.toUint40(snapshot),
-<         voteEnd: SafeCast.toUint40(deadline),
-<         executed: false,
-<         canceled: false
+>         return proposals[proposalId].voteEnd;
+224c201
+<         return _proposals[proposalId].proposer;
 ---
->         _proposals[proposalId] = ProposalCore({
->             proposer: proposer,
->             voteStart: SafeCast.toUint64(snapshot),
->             voteEnd: SafeCast.toUint64(deadline),
->             executed: false,
->             canceled: false,
->             __gap_unused0: 0,
->             __gap_unused1: 0
-327c333
-<         proposals[proposalId].executed = true;
+>         return proposals[proposalId].proposer;
+247,253c224
+<     function _countVote(
+<         uint256 proposalId,
+<         address account,
+<         uint8 support,
+<         uint256 weight,
+<         bytes memory params
+<     ) internal virtual;
 ---
->         _proposals[proposalId].executed = true;
-349c355
-<         require(_msgSender() == proposals[proposalId].proposer, "Governor: only proposer can cancel");
+>     function _countVote(uint256 proposalId, address account, uint8 support, uint256 weight, bytes memory params) internal virtual;
+268,273c239
+<     function propose(
+<         address[] memory targets,
+<         uint256[] memory values,
+<         bytes[] memory calldatas,
+<         string memory description
+<     ) public virtual override returns (uint256) {
 ---
->         require(_msgSender() == _proposals[proposalId].proposer, "Governor: only proposer can cancel");
-424,425c430,431
-<             currentState != ProposalState.Expired &&
-<             currentState != ProposalState.Executed,
+>     function propose(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description) public virtual override returns (uint256) {
+277,280c243
+<         require(
+<             getVotes(proposer, currentTimepoint - 1) >= proposalThreshold(),
+<             "Governor: proposer votes below proposal threshold"
+<         );
 ---
->                 currentState != ProposalState.Expired &&
->                 currentState != ProposalState.Executed,
-428c434
-<         proposals[proposalId].canceled = true;
+>         require(getVotes(proposer, currentTimepoint - 1) >= proposalThreshold(), "Governor: proposer votes below proposal threshold");
+287c250
+<         require(_proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
 ---
->         _proposals[proposalId].canceled = true;
-565c571
-<         ProposalCore storage proposal = proposals[proposalId];
+>         require(proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
+292,300c255
+<         _proposals[proposalId] = ProposalCore({
+<             proposer: proposer,
+<             voteStart: SafeCast.toUint64(snapshot),
+<             voteEnd: SafeCast.toUint64(deadline),
+<             executed: false,
+<             canceled: false,
+<             __gap_unused0: 0,
+<             __gap_unused1: 0
+<         });
 ---
->         ProposalCore storage proposal = _proposals[proposalId];
-632d637
-< // forgefmt: disable-end
+>         proposals[proposalId] = ProposalCore({ proposer: proposer, voteStart: SafeCast.toUint40(snapshot), voteEnd: SafeCast.toUint40(deadline), executed: false, canceled: false });
+302,312c257
+<         emit ProposalCreated(
+<             proposalId,
+<             proposer,
+<             targets,
+<             values,
+<             new string[](targets.length),
+<             calldatas,
+<             snapshot,
+<             deadline,
+<             description
+<         );
+---
+>         emit ProposalCreated(proposalId, proposer, targets, values, new string[](targets.length), calldatas, snapshot, deadline, description);
+320,325c265
+<     function execute(
+<         address[] memory targets,
+<         uint256[] memory values,
+<         bytes[] memory calldatas,
+<         bytes32 descriptionHash
+<     ) public payable virtual override returns (uint256) {
+---
+>     function execute(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash) public payable virtual override returns (uint256) {
+329,333c269,270
+<         require(
+<             currentState == ProposalState.Succeeded || currentState == ProposalState.Queued,
+<             "Governor: proposal not successful"
+<         );
+<         _proposals[proposalId].executed = true;
+---
+>         require(currentState == ProposalState.Succeeded || currentState == ProposalState.Queued, "Governor: proposal not successful");
+>         proposals[proposalId].executed = true;
+347,352c284
+<     function cancel(
+<         address[] memory targets,
+<         uint256[] memory values,
+<         bytes[] memory calldatas,
+<         bytes32 descriptionHash
+<     ) public virtual override returns (uint256) {
+---
+>     function cancel(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash) public virtual override returns (uint256) {
+355c287
+<         require(_msgSender() == _proposals[proposalId].proposer, "Governor: only proposer can cancel");
+---
+>         require(_msgSender() == proposals[proposalId].proposer, "Governor: only proposer can cancel");
+362,368c294
+<     function _execute(
+<         uint256 /* proposalId */,
+<         address[] memory targets,
+<         uint256[] memory values,
+<         bytes[] memory calldatas,
+<         bytes32 /*descriptionHash*/
+<     ) internal virtual {
+---
+>     function _execute(uint256, /* proposalId */ address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 /*descriptionHash*/ ) internal virtual {
+371c297
+<             (bool success, bytes memory returndata) = targets[i].call{value: values[i]}(calldatas[i]);
+---
+>             (bool success, bytes memory returndata) = targets[i].call{ value: values[i] }(calldatas[i]);
+379,385c305
+<     function _beforeExecute(
+<         uint256 /* proposalId */,
+<         address[] memory targets,
+<         uint256[] memory /* values */,
+<         bytes[] memory calldatas,
+<         bytes32 /*descriptionHash*/
+<     ) internal virtual {
+---
+>     function _beforeExecute(uint256, /* proposalId */ address[] memory targets, uint256[] memory, /* values */ bytes[] memory calldatas, bytes32 /*descriptionHash*/ ) internal virtual {
+398,404c318
+<     function _afterExecute(
+<         uint256 /* proposalId */,
+<         address[] memory /* targets */,
+<         uint256[] memory /* values */,
+<         bytes[] memory /* calldatas */,
+<         bytes32 /*descriptionHash*/
+<     ) internal virtual {
+---
+>     function _afterExecute(uint256, /* proposalId */ address[] memory, /* targets */ uint256[] memory, /* values */ bytes[] memory, /* calldatas */ bytes32 /*descriptionHash*/ ) internal virtual {
+418,423c332
+<     function _cancel(
+<         address[] memory targets,
+<         uint256[] memory values,
+<         bytes[] memory calldatas,
+<         bytes32 descriptionHash
+<     ) internal virtual returns (uint256) {
+---
+>     function _cancel(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash) internal virtual returns (uint256) {
+428,434c337,338
+<         require(
+<             currentState != ProposalState.Canceled &&
+<                 currentState != ProposalState.Expired &&
+<                 currentState != ProposalState.Executed,
+<             "Governor: proposal not active"
+<         );
+<         _proposals[proposalId].canceled = true;
+---
+>         require(currentState != ProposalState.Canceled && currentState != ProposalState.Expired && currentState != ProposalState.Executed, "Governor: proposal not active");
+>         proposals[proposalId].canceled = true;
+451,455c355
+<     function getVotesWithParams(
+<         address account,
+<         uint256 timepoint,
+<         bytes memory params
+<     ) public view virtual override returns (uint256) {
+---
+>     function getVotesWithParams(address account, uint256 timepoint, bytes memory params) public view virtual override returns (uint256) {
+470,474c370
+<     function castVoteWithReason(
+<         uint256 proposalId,
+<         uint8 support,
+<         string calldata reason
+<     ) public virtual override returns (uint256) {
+---
+>     function castVoteWithReason(uint256 proposalId, uint8 support, string calldata reason) public virtual override returns (uint256) {
+482,487c378
+<     function castVoteWithReasonAndParams(
+<         uint256 proposalId,
+<         uint8 support,
+<         string calldata reason,
+<         bytes memory params
+<     ) public virtual override returns (uint256) {
+---
+>     function castVoteWithReasonAndParams(uint256 proposalId, uint8 support, string calldata reason, bytes memory params) public virtual override returns (uint256) {
+495,507c386,387
+<     function castVoteBySig(
+<         uint256 proposalId,
+<         uint8 support,
+<         uint8 v,
+<         bytes32 r,
+<         bytes32 s
+<     ) public virtual override returns (uint256) {
+<         address voter = ECDSA.recover(
+<             _hashTypedDataV4(keccak256(abi.encode(BALLOT_TYPEHASH, proposalId, support))),
+<             v,
+<             r,
+<             s
+<         );
+---
+>     function castVoteBySig(uint256 proposalId, uint8 support, uint8 v, bytes32 r, bytes32 s) public virtual override returns (uint256) {
+>         address voter = ECDSA.recover(_hashTypedDataV4(keccak256(abi.encode(BALLOT_TYPEHASH, proposalId, support))), v, r, s);
+514,538c394,395
+<     function castVoteWithReasonAndParamsBySig(
+<         uint256 proposalId,
+<         uint8 support,
+<         string calldata reason,
+<         bytes memory params,
+<         uint8 v,
+<         bytes32 r,
+<         bytes32 s
+<     ) public virtual override returns (uint256) {
+<         address voter = ECDSA.recover(
+<             _hashTypedDataV4(
+<                 keccak256(
+<                     abi.encode(
+<                         EXTENDED_BALLOT_TYPEHASH,
+<                         proposalId,
+<                         support,
+<                         keccak256(bytes(reason)),
+<                         keccak256(params)
+<                     )
+<                 )
+<             ),
+<             v,
+<             r,
+<             s
+<         );
+---
+>     function castVoteWithReasonAndParamsBySig(uint256 proposalId, uint8 support, string calldata reason, bytes memory params, uint8 v, bytes32 r, bytes32 s) public virtual override returns (uint256) {
+>         address voter = ECDSA.recover(_hashTypedDataV4(keccak256(abi.encode(EXTENDED_BALLOT_TYPEHASH, proposalId, support, keccak256(bytes(reason)), keccak256(params)))), v, r, s);
+549,554c406
+<     function _castVote(
+<         uint256 proposalId,
+<         address account,
+<         uint8 support,
+<         string memory reason
+<     ) internal virtual returns (uint256) {
+---
+>     function _castVote(uint256 proposalId, address account, uint8 support, string memory reason) internal virtual returns (uint256) {
+564,571c416,417
+<     function _castVote(
+<         uint256 proposalId,
+<         address account,
+<         uint8 support,
+<         string memory reason,
+<         bytes memory params
+<     ) internal virtual returns (uint256) {
+<         ProposalCore storage proposal = _proposals[proposalId];
+---
+>     function _castVote(uint256 proposalId, address account, uint8 support, string memory reason, bytes memory params) internal virtual returns (uint256) {
+>         ProposalCore storage proposal = proposals[proposalId];
+593c439
+<         (bool success, bytes memory returndata) = target.call{value: value}(data);
+---
+>         (bool success, bytes memory returndata) = target.call{ value: value }(data);
+615,621c461
+<     function onERC1155Received(
+<         address,
+<         address,
+<         uint256,
+<         uint256,
+<         bytes memory
+<     ) public virtual override returns (bytes4) {
+---
+>     function onERC1155Received(address, address, uint256, uint256, bytes memory) public virtual override returns (bytes4) {
+628,634c468
+<     function onERC1155BatchReceived(
+<         address,
+<         address,
+<         uint256[] memory,
+<         uint256[] memory,
+<         bytes memory
+<     ) public virtual override returns (bytes4) {
+---
+>     function onERC1155BatchReceived(address, address, uint256[] memory, uint256[] memory, bytes memory) public virtual override returns (bytes4) {

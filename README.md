@@ -8,11 +8,11 @@ The Frax team has a special Governor contract called FraxGovernorOmega. Omega al
 
 ## Smart Contract Design
 
-![Smart Contract Design](./frxGovSmartContractDesign.png "Smart Contract Design")
+![Smart Contract Design](./images/frxGovSmartContractDesign.png "Smart Contract Design")
 
 ## End to End Governance Process
 
-![End to End Governance Process](./frxGovSwimlanes.png "End to End Governance Process")
+![End to End Governance Process](./images/frxGovSwimlanes.png "End to End Governance Process")
 
 ## FraxGovernorAlpha
 High quorum. Alpha's TimelockController must be set as a Module on underlying Gnosis Safes. It has full control over the Gnosis Safes. Only veFXS holders can call `propose()`. Alpha controls all governance parameters, including governance parameters on Omega.
@@ -21,7 +21,7 @@ High quorum. Alpha's TimelockController must be set as a Module on underlying Gn
 Identical to OpenZeppelin Governor.
 
 ## FraxGovernorOmega
-Low quorum. Signer on underlying Gnosis Safe, so limited control. Only veFXS holders can directly call `propose()`. This `propose()` is intended to be used very infrequently, for example, if someone wrongfully sent tokens to this address, they can be recovered using `propose()`.
+Low quorum. Signer on underlying Gnosis Safe, so limited control. propose() is removed.
 
 ### General Flow
 #### DeFi transaction
@@ -43,6 +43,8 @@ This flow exists to stop a gnosis transaction that is deemed wrong or no longer 
 6. If the original transaction was already put into FraxGovernorOmega with `addNewTransaction()`, the underlying proposal will be marked `ProposalState.Canceled` so no one else can vote on it.
 
 ## Tests
+`npm install`
+
 To run tests you need to create a virtual env and install vyper 0.2.12. This is because we're using VyperDeployer,
 which will deploy the actual veFXS.vy contract.
 
