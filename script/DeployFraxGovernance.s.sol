@@ -127,22 +127,19 @@ contract DeployFraxGovernance is BaseScript {
         tc.grantRole(tc.CANCELLER_ROLE(), _address);
         tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), deployer);
 
-        address[] memory _safeAllowlist = new address[](2);
+        address[] memory _safeAllowlist = new address[](1);
         //        _safeAllowlist[0] = address(0); //TODO: prod value
-        (
-            address _addressOmega,
-            bytes memory _constructorParamsOmega /* string memory _contractNameOmega */,
-
-        ) = deployFraxGovernorOmega(Constants.VE_FXS, _addressVoting, _safeAllowlist, _addressTimelock);
+        (address _addressOmega, bytes memory _constructorParamsOmega, ) = deployFraxGovernorOmega(
+            Constants.VE_FXS,
+            _addressVoting,
+            _safeAllowlist,
+            _addressTimelock
+        );
         console.log("_constructorParamsOmega:", string(abi.encode(_constructorParamsOmega)));
         console.logBytes(_constructorParamsOmega);
         console.log("_addressOmega:", _addressOmega);
 
-        (
-            address _addressGuard,
-            bytes memory _constructorParamsGuard /* string memory _contractNameGuard */,
-
-        ) = deployFraxGuard(_addressOmega);
+        (address _addressGuard, bytes memory _constructorParamsGuard, ) = deployFraxGuard(_addressOmega);
         console.log("_constructorParamsGuard:", string(abi.encode(_constructorParamsGuard)));
         console.logBytes(_constructorParamsGuard);
         console.log("_addressGuard:", _addressGuard);

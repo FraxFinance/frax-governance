@@ -5,14 +5,16 @@ src = 'src'
 out = 'out'
 # A list of paths to look for libraries in
 libs = ['lib']
+# The test directory
+test = 'test'
 # Whether or not to enable `vm.ffi`
 ffi = true
 # Enables or disables via-ir
 via-ir = false
 # Enables or disables the optimizer
-optimizer = true
+optimizer = false
 # The number of optimizer runs
-optimizer_runs = 15_000
+optimizer_runs = 5_000
 # Improves verification
 bytecode_hash = "none"
 # EVM version

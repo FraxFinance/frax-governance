@@ -175,6 +175,58 @@ contract FraxGovernorAlpha is FraxGovernorBase, GovernorTimelockControl, Governo
         }
     }
 
+    /// @notice The ```_propose``` function is similar to OpenZeppelin's propose() with minor changes.
+    /// @dev Changes include: Removal of proposal threshold check, ProposalCore struct packing, and setting $snapshotToTotalVeFxsSupply
+    /// @return proposalId Proposal ID
+    function _propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) internal returns (uint256 proposalId) {
+        proposalId = hashProposal({
+            targets: targets,
+            values: values,
+            calldatas: calldatas,
+            descriptionHash: keccak256(bytes(description))
+        });
+
+        require(targets.length == values.length, "Governor: invalid proposal length");
+        require(targets.length == calldatas.length, "Governor: invalid proposal length");
+        require(targets.length > 0, "Governor: empty proposal");
+        require(proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
+
+        address proposer = msg.sender;
+        uint256 snapshot = clock() + votingDelay();
+        uint256 deadline = snapshot + votingPeriod();
+
+        proposals[proposalId] = ProposalCore({
+            proposer: proposer,
+            voteStart: uint40(snapshot),
+            voteEnd: uint40(deadline),
+            executed: false,
+            canceled: false
+        });
+
+        // Save the block number of the snapshot, so it can be later used to fetch the total outstanding supply
+        // of veFXS. We did this so we can still support quorum(timestamp), without breaking the OZ standard.
+        // The underlying issue is that VE_FXS.totalSupply(timestamp) doesn't work for historical values, so we must
+        // use VE_FXS.totalSupply(), or VE_FXS.totalSupplyAt(blockNumber).
+        $snapshotTimestampToSnapshotBlockNumber[snapshot] = block.number + $votingDelayBlocks;
+
+        emit ProposalCreated(
+            proposalId,
+            proposer,
+            targets,
+            values,
+            new string[](targets.length),
+            calldatas,
+            snapshot,
+            deadline,
+            description
+        );
+    }
+
     /// Boilerplate overrides
 
     /**

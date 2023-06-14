@@ -21,6 +21,8 @@ interface IFraxGovernorOmega {
 
     function $safeAllowlist(address safe) external view returns (uint256 status);
 
+    function $safeVotingPeriod(address safe) external view returns (uint256 votingPeriod);
+
     function $snapshotTimestampToSnapshotBlockNumber(uint256 snapshot) external view returns (uint256 blockNumber);
 
     function $votingDelayBlocks() external view returns (uint256);
@@ -169,6 +171,8 @@ interface IFraxGovernorOmega {
 
     function setProposalThreshold(uint256 newProposalThreshold) external;
 
+    function setSafeVotingPeriod(address safe, uint256 newSafeVotingPeriod) external;
+
     function setVeFxsVotingDelegation(address veFxsVotingDelegation) external;
 
     function setVotingDelay(uint256 newVotingDelay) external;
@@ -212,6 +216,7 @@ interface IFraxGovernorOmega {
     error ProposalAlreadyCanceled();
     error SafeAlreadyOnAllowlist(address safe);
     error SafeNotOnAllowlist(address safe);
+    error SameSafeVotingPeriod();
     error TransactionAlreadyApproved(bytes32 txHash);
     error WrongNonce();
     error WrongProposalState();

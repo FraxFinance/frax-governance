@@ -208,11 +208,7 @@ contract TestVeFxsVotingDelegation is FraxGovernorTestBase {
         assertGt(veFxsVotingDelegation.getVotes(bob, block.timestamp), 0, "Bob has delegated weight");
 
         vm.expectEmit(true, true, true, true);
-        emit DelegateVotesChanged(
-            bob,
-            veFxsVotingDelegation.getVotes(bob, ((block.timestamp / 1 days) * 1 days) + 1 days),
-            0
-        );
+        emit DelegateVotesChanged(bob, veFxsVotingDelegation.getVotes(bob, delegationStarts + 1 days), 0);
         vm.expectEmit(true, true, true, true);
         emit DelegateChanged(accounts[0], bob, accounts[0]);
         veFxsVotingDelegation.delegate(accounts[0]);

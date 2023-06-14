@@ -65,17 +65,10 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     VyperDeployer immutable vyperDeployer = new VyperDeployer();
 
     function _bytesToAddress(bytes memory b) internal pure returns (address addr) {
+        /// @solidity memory-safe-assembly
         assembly {
             addr := mload(add(b, 32))
         }
-    }
-
-    function _initSafeTestTools() internal {
-        // SafeTestTools' constructor runs before we start the fork test. So we reinitialize
-        // all of these here so they exist on our fork
-        singleton = new GnosisSafe();
-        proxyFactory = new GnosisSafeProxyFactory();
-        handler = new CompatibilityFallbackHandler();
     }
 
     function _setupGnosisSafe() internal {
@@ -214,7 +207,9 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
             }
         }
 
-        _initSafeTestTools();
+        // SafeTestTools' constructor runs before we start the fork test. So we reinitialize
+        // all of these here so they exist on our fork
+        _initializeSafeTools();
 
         _setupGnosisSafe();
 
@@ -492,7 +487,9 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         (pid, targets, values, calldatas) = optimisticTxProposalHash(_safe, _fraxGovernorOmega, txHash);
 
         uint256 delay = _fraxGovernorOmega.votingDelay();
-        uint256 period = _fraxGovernorOmega.votingPeriod();
+        uint256 period = _fraxGovernorOmega.$safeVotingPeriod(_safe) != 0
+            ? _fraxGovernorOmega.$safeVotingPeriod(_safe)
+            : _fraxGovernorOmega.votingPeriod();
 
         hoax(caller);
         vm.expectEmit(true, true, true, true);
@@ -608,6 +605,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     event TimelockChange(address oldTimelock, address newTimelock);
     event ProposalExtended(uint256 indexed proposalId, uint64 extendedDeadline);
     event LateQuorumVoteExtensionSet(uint64 oldVoteExtension, uint64 newVoteExtension);
+    event SafeVotingPeriodSet(address safe, uint256 oldSafeVotingPeriod, uint256 newSafeVotingPeriod);
 
     event AddSafeToAllowlist(address indexed safe);
     event RemoveSafeFromAllowlist(address indexed safe);

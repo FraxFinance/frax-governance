@@ -55,6 +55,9 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @notice Configuration and allowlist for Gnosis Safes approved for use with FraxGovernorOmega
     mapping(address safe => uint256 status) public $safeAllowlist;
 
+    /// @notice Configuration for voting periods configured per safe. If 0, uses Omega default votingPeriod().
+    mapping(address safe => uint256 votingPeriod) public $safeVotingPeriod;
+
     /// @notice Lookup from Gnosis Safe to nonce to corresponding transaction hash
     mapping(address safe => mapping(uint256 safeNonce => bytes32 txHash)) public $gnosisSafeToNonceToTxHash;
 
@@ -65,6 +68,12 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @notice The ```RemoveSafeFromAllowlist``` event is emitted when governance removes a safe from the allowlist
     /// @param safe The address of the Gnosis Safe removed
     event RemoveSafeFromAllowlist(address indexed safe);
+
+    /// @notice The ```SafeVotingPeriodSet``` event is emitted when governance changes the voting period for a specific safe
+    /// @param safe The address of the Gnosis Safe removed
+    /// @param oldSafeVotingPeriod The old value for the safe's voting period
+    /// @param newSafeVotingPeriod The new value for the safe's voting period
+    event SafeVotingPeriodSet(address safe, uint256 oldSafeVotingPeriod, uint256 newSafeVotingPeriod);
 
     /// @notice The ```TransactionProposed``` event is emitted when a Frax Team optimistic proposal is put up for voting
     /// @param safe The address of the Gnosis Safe
@@ -241,7 +250,13 @@ contract FraxGovernorOmega is FraxGovernorBase {
             txHash: txHash
         });
 
-        optimisticProposalId = _propose({ targets: targets, values: values, calldatas: calldatas, description: "" });
+        optimisticProposalId = _propose({
+            targets: targets,
+            values: values,
+            calldatas: calldatas,
+            description: "",
+            teamSafe: teamSafe
+        });
 
         $gnosisSafeToNonceToTxHash[teamSafe][args._nonce] = txHash;
 
@@ -482,6 +497,23 @@ contract FraxGovernorOmega is FraxGovernorBase {
         }
     }
 
+    /// @notice The ```setSafeVotingPeriod``` function is called by governance to change the short circuit numerator
+    /// @dev Only callable by FraxGovernorAlpha governance
+    /// @param safe The Gnosis safe to configure
+    /// @param newSafeVotingPeriod The voting period specific to safe, set to 0 to go back to Omega's default voting period
+    function setSafeVotingPeriod(address safe, uint256 newSafeVotingPeriod) external {
+        _requireOnlyTimelockController();
+
+        uint256 safeVotingPeriod = $safeVotingPeriod[safe];
+        if (safeVotingPeriod == newSafeVotingPeriod) revert IFraxGovernorOmega.SameSafeVotingPeriod();
+        $safeVotingPeriod[safe] = newSafeVotingPeriod;
+        emit SafeVotingPeriodSet({
+            safe: safe,
+            oldSafeVotingPeriod: safeVotingPeriod,
+            newSafeVotingPeriod: newSafeVotingPeriod
+        });
+    }
+
     /// @notice The ```_optimisticVoteDefeated``` function is called by state() to check if an optimistic proposal was defeated
     /// @param proposalId Proposal ID
     /// @return Whether the optimistic proposal was defeated or not
@@ -492,6 +524,66 @@ contract FraxGovernorOmega is FraxGovernorBase {
         } else {
             return forVoteWeight <= againstVoteWeight;
         }
+    }
+
+    /// @notice The ```_propose``` function is similar to OpenZeppelin's propose() with minor changes.
+    /// @dev Changes include: Removal of proposal threshold check, ProposalCore struct packing, setting $snapshotToTotalVeFxsSupply, and configurable voting periods per safe
+    /// @return proposalId Proposal ID
+    function _propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description,
+        address teamSafe
+    ) internal returns (uint256 proposalId) {
+        proposalId = hashProposal({
+            targets: targets,
+            values: values,
+            calldatas: calldatas,
+            descriptionHash: keccak256(bytes(description))
+        });
+
+        require(targets.length == values.length, "Governor: invalid proposal length");
+        require(targets.length == calldatas.length, "Governor: invalid proposal length");
+        require(targets.length > 0, "Governor: empty proposal");
+        require(proposals[proposalId].voteStart == 0, "Governor: proposal already exists");
+
+        address proposer = msg.sender;
+        uint256 snapshot = clock() + votingDelay();
+        uint256 deadline;
+
+        {
+            uint256 safeVotingPeriod = $safeVotingPeriod[teamSafe];
+            // If configured, use safe's voting period. Otherwise use default Omega value.
+            uint256 votingPeriod = safeVotingPeriod != 0 ? safeVotingPeriod : votingPeriod();
+            deadline = snapshot + votingPeriod;
+        }
+
+        proposals[proposalId] = ProposalCore({
+            proposer: proposer,
+            voteStart: uint40(snapshot),
+            voteEnd: uint40(deadline),
+            executed: false,
+            canceled: false
+        });
+
+        // Save the block number of the snapshot, so it can be later used to fetch the total outstanding supply
+        // of veFXS. We did this so we can still support quorum(timestamp), without breaking the OZ standard.
+        // The underlying issue is that VE_FXS.totalSupply(timestamp) doesn't work for historical values, so we must
+        // use VE_FXS.totalSupply(), or VE_FXS.totalSupplyAt(blockNumber).
+        $snapshotTimestampToSnapshotBlockNumber[snapshot] = block.number + $votingDelayBlocks;
+
+        emit ProposalCreated(
+            proposalId,
+            proposer,
+            targets,
+            values,
+            new string[](targets.length),
+            calldatas,
+            snapshot,
+            deadline,
+            description
+        );
     }
 
     /// @notice The ```state``` function is similar to OpenZeppelin's propose() with minor changes

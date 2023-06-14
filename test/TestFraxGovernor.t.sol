@@ -1889,6 +1889,80 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         assertEq(fraxGovernorOmega.votingPeriod(), omegaVotingPeriod + 1, "value changed");
     }
 
+    // Only Alpha can update Safe Voting period
+    function testOmegaSetSafeVotingPeriod() public {
+        uint256 newSafeVotingPeriod = 1 days;
+
+        hoax(address(fraxGovernorOmega));
+        vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
+        fraxGovernorOmega.setSafeVotingPeriod(address(multisig), newSafeVotingPeriod);
+
+        assertEq(fraxGovernorOmega.$safeVotingPeriod(address(multisig)), 0, "value didn't change");
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(fraxGovernorOmega);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeWithSignature(
+            "setSafeVotingPeriod(address,uint256)",
+            address(multisig),
+            newSafeVotingPeriod
+        );
+
+        hoax(accounts[0]);
+        uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        votePassingAlphaQuorum(pid);
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+        vm.warp(fraxGovernorAlpha.proposalEta(pid));
+
+        vm.expectEmit(true, true, true, true);
+        emit SafeVotingPeriodSet({
+            safe: address(multisig),
+            oldSafeVotingPeriod: 0,
+            newSafeVotingPeriod: newSafeVotingPeriod
+        });
+        fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
+
+        assertEq(fraxGovernorOmega.$safeVotingPeriod(address(multisig)), newSafeVotingPeriod, "value changed");
+
+        (uint256 pid2, , , ) = createOptimisticProposal(
+            address(multisig),
+            fraxGovernorOmega,
+            address(this),
+            multisig.nonce()
+        );
+
+        mineBlocksBySecond(fraxGovernorOmega.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Active),
+            uint256(fraxGovernorOmega.state(pid2)),
+            "Proposal state is Active"
+        );
+
+        mineBlocksBySecond(fraxGovernorOmega.$safeVotingPeriod(address(multisig)));
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorOmega.state(pid2)),
+            "Proposal state is Succeeded, at configured voting period. Default value would be later."
+        );
+    }
+
     // Only Alpha can update proposal threshold
     function testAlphaSetProposalThreshold() public {
         uint256 alphaProposalThreshold = fraxGovernorAlpha.proposalThreshold();

@@ -51,27 +51,19 @@ contract DeployTestnet is BaseScript {
         tc.renounceRole(tc.TIMELOCK_ADMIN_ROLE(), deployer);
 
         address[] memory _safeAllowlist = new address[](1);
-        _safeAllowlist[0] = Constants.ARBITRUM_TEST_MULTISIG_FINAL7;
+        _safeAllowlist[0] = Constants.ARBITRUM_TEST_MULTISIG_FINAL9;
 
-        (
-            address _addressOmega,
-            bytes memory _constructorParamsOmega /* string memory _contractNameOmega */,
-
-        ) = deployFraxGovernorOmega(
-                Constants.ARBITRUM_TEST_MOCK_VE_FXS,
-                _addressVoting,
-                _safeAllowlist,
-                _addressTimelock
-            );
+        (address _addressOmega, bytes memory _constructorParamsOmega, ) = deployFraxGovernorOmega(
+            Constants.ARBITRUM_TEST_MOCK_VE_FXS,
+            _addressVoting,
+            _safeAllowlist,
+            _addressTimelock
+        );
         console.log("_constructorParamsOmega:", string(abi.encode(_constructorParamsOmega)));
         console.logBytes(_constructorParamsOmega);
         console.log("_addressOmega:", _addressOmega);
 
-        (
-            address _addressGuard,
-            bytes memory _constructorParamsGuard /* string memory _contractNameGuard */,
-
-        ) = deployFraxGuard(_addressOmega);
+        (address _addressGuard, bytes memory _constructorParamsGuard, ) = deployFraxGuard(_addressOmega);
         console.log("_constructorParamsGuard:", string(abi.encode(_constructorParamsGuard)));
         console.logBytes(_constructorParamsGuard);
         console.log("_addressGuard:", _addressGuard);

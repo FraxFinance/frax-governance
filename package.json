@@ -10,13 +10,12 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "prepare": "husky install",
-    "format": "forge fmt src && prettier --config ./.prettierrc.json --write src && forge fmt test && prettier --config ./.prettierrc.json --write test",
-    "install": "napa"
+    "format": "forge fmt src && prettier --config ./.prettierrc.json --write src && forge fmt test && prettier --config ./.prettierrc.json --write test"
   },
-  "napa": {
-    "safe-tools": "https://github.com/colinnielsen/safe-tools.git#75b8b74dd74f3f6e0817006b20a0269e1ab046af"
+  "author": {
+    "name": "Jon Walch",
+    "url": "https://www.twitter.com/jonwalch"
   },
-  "author": "",
   "license": "ISC",
   "dependencies": {
     "@gnosis.pm/safe-contracts": "github:safe-global/safe-contracts#v1.3.0",
@@ -26,11 +25,9 @@
     "openzeppelin-solidity": "github:OpenZeppelin/openzeppelin-contracts#09329f8a18f08df65863a5060f6e776bf7fccacf",
     "prettier": "^2.8.7",
     "prettier-plugin-solidity": "^1.1.3",
+    "safe-tools": "github:colinnielsen/safe-tools",
     "solady": "github:Vectorized/solady#v0.0.97",
     "solhint": "^3.4.1",
     "solhint-plugin-prettier": "^0.0.5"
-  },
-  "devDependencies": {
-    "napa": "^3.0.0"
   }
 }
