@@ -685,8 +685,8 @@ contract TestVeFxsVotingDelegation is FraxGovernorTestBase {
     // Fuzz expirations with various amounts
     function testFuzzCheckpointExpiration(uint256 amount) public {
         // start local and fork test at same point in time
-        vm.warp(1_685_031_853);
-        vm.roll(17_337_321);
+        vm.warp(1_701_328_824);
+        vm.roll(FORK_BLOCK + 10_000);
 
         amount = bound(amount, 100e18, 1_500_000e18);
         uint256 start = ((block.timestamp / 1 days) * 1 days) + 1 days;

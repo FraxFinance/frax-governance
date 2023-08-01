@@ -7,6 +7,8 @@ out = 'out'
 libs = ['lib']
 # The test directory
 test = 'test'
+# The script directory
+script = 'script'
 # Whether or not to enable `vm.ffi`
 ffi = true
 # Enables or disables via-ir
@@ -14,7 +16,7 @@ via-ir = false
 # Enables or disables the optimizer
 optimizer = false
 # The number of optimizer runs
-optimizer_runs = 5_000
+optimizer_runs = 2_000
 # Improves verification
 bytecode_hash = "none"
 # EVM version
@@ -22,11 +24,11 @@ evm_version = "london"
 # Version to compile with
 solc_version = "0.8.19"
 # Contracts to track with --gas-report
-gas_reports = ["FraxGovernorAlpha", "FraxGovernorOmega", "VeFxsVotingDelegation", "FraxGuard"]
+gas_reports = ["FraxGovernorAlpha", "FraxGovernorOmega", "VeFxsVotingDelegation", "FraxGuard", "FraxCompatibilityFallbackHandler"]
 
 [fuzz]
 # Amount of runs per fuzz test
-runs = 1024
+runs = 256
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
 

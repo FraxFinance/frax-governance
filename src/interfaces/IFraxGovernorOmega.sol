@@ -17,6 +17,8 @@ interface IFraxGovernorOmega {
         uint256 _nonce;
     }
 
+    function $delegateCallAllowlist(address contractAddress) external view returns (uint256 status);
+
     function $gnosisSafeToNonceToTxHash(address safe, uint256 safeNonce) external view returns (bytes32 txHash);
 
     function $safeAllowlist(address safe) external view returns (uint256 status);
@@ -41,7 +43,9 @@ interface IFraxGovernorOmega {
 
     function abortTransaction(address teamSafe, bytes memory signatures) external;
 
-    function addSafesToAllowlist(address[] memory safes) external;
+    function addToDelegateCallAllowlist(address[] memory contracts) external;
+
+    function addToSafeAllowlist(address[] memory safes) external;
 
     function addTransaction(
         address teamSafe,
@@ -167,7 +171,9 @@ interface IFraxGovernorOmega {
 
     function relay(address, uint256, bytes memory) external payable;
 
-    function removeSafesFromAllowlist(address[] memory safes) external;
+    function removeFromDelegateCallAllowlist(address[] memory contracts) external;
+
+    function removeFromSafeAllowlist(address[] memory safes) external;
 
     function setProposalThreshold(uint256 newProposalThreshold) external;
 
@@ -205,17 +211,19 @@ interface IFraxGovernorOmega {
 
     function votingPeriod() external view returns (uint256);
 
+    error AlreadyOnDelegateCallAllowlist(address contractAddress);
+    error AlreadyOnSafeAllowlist(address safe);
     error BadBatchArgs();
     error CannotCancelOptimisticTransaction();
     error CannotPropose();
     error CannotRelay();
-    error DelegateWithAlpha();
+    error DelegateCallNotAllowed(address to);
     error DisallowedTarget(address target);
     error NonceReserved();
+    error NotOnDelegateCallAllowlist(address contractAddress);
+    error NotOnSafeAllowlist(address safe);
     error NotTimelockController();
     error ProposalAlreadyCanceled();
-    error SafeAlreadyOnAllowlist(address safe);
-    error SafeNotOnAllowlist(address safe);
     error SameSafeVotingPeriod();
     error TransactionAlreadyApproved(bytes32 txHash);
     error WrongNonce();

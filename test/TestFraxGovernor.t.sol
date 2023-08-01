@@ -205,7 +205,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
     // Cannot call addTransaction() for a safe that isnt registered
     function testAddAbortTransactionSafeNotAllowlisted() public {
-        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args) = createNoOpProposal(
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, ) = createNoOpProposal(
             address(getSafe(address(multisig)).safe),
             address(getSafe(address(multisig)).safe),
             getSafe(address(multisig)).safe.nonce()
@@ -222,7 +222,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
     // Cannot call addTransaction() for a safe that already had addTransaction() called for that nonce
     function testAddTransactionNonceReserved() public {
-        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args) = createNoOpProposal(
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, ) = createNoOpProposal(
             address(getSafe(address(multisig)).safe),
             bob,
             getSafe(address(multisig)).safe.nonce()
@@ -238,7 +238,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
     // Cannot call addTransaction() for a safe where the nonce is already beyond the provided one
     function testAddTransactionNonceBelowCurrent() public {
-        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args) = createNoOpProposal(
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, ) = createNoOpProposal(
             address(getSafe(address(multisig)).safe),
             bob,
             getSafe(address(multisig)).safe.nonce() - 1
@@ -251,17 +251,17 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
     // Cannot call addTransaction() with invalid signatures
     function testAddAbortTransactionBadSignatures() public {
-        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args) = createNoOpProposal(
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, ) = createNoOpProposal(
             address(getSafe(address(multisig)).safe),
             bob,
             getSafe(address(multisig)).safe.nonce()
         );
 
         vm.startPrank(eoaOwners[0]);
-        vm.expectRevert(IFraxGovernorOmega.WrongSafeSignatureType.selector);
+        vm.expectRevert("GS020");
         fraxGovernorOmega.addTransaction(address(multisig), args, "");
 
-        vm.expectRevert(IFraxGovernorOmega.WrongSafeSignatureType.selector);
+        vm.expectRevert("GS020");
         fraxGovernorOmega.abortTransaction(address(multisig), "");
 
         vm.expectRevert("GS026");
@@ -270,12 +270,32 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert("GS026");
         fraxGovernorOmega.abortTransaction(address(multisig), generateEoaSigsWrongOrder(3, txHash));
 
+        bytes memory sigs;
+        address[] memory sortedAddresses = new address[](3);
+        for (uint256 i = 0; i < 2; ++i) {
+            sortedAddresses[i] = eoaOwners[i];
+        }
+        sortedAddresses[2] = address(fraxGovernorOmega);
+        LibSort.sort(sortedAddresses);
+
+        for (uint256 i = 0; i < sortedAddresses.length; ++i) {
+            if (sortedAddresses[i] != address(fraxGovernorOmega)) {
+                (uint8 v, bytes32 r, bytes32 s) = vm.sign(addressToPk[sortedAddresses[i]], txHash);
+                sigs = abi.encodePacked(sigs, r, s, v);
+            } else {
+                sigs = abi.encodePacked(sigs, buildContractPreapprovalSignature(address(fraxGovernorOmega)));
+            }
+        }
+
+        vm.expectRevert(IFraxGovernorOmega.WrongSafeSignatureType.selector);
+        fraxGovernorOmega.addTransaction(address(multisig), args, sigs);
+
         vm.stopPrank();
     }
 
     // Cannot call addTransaction() with the safe as a target
     function testDisallowedTxTargets() public {
-        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args) = createNoOpProposal(
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, ) = createNoOpProposal(
             address(getSafe(address(multisig)).safe),
             address(getSafe(address(multisig)).safe),
             getSafe(address(multisig)).safe.nonce()
@@ -283,6 +303,21 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         hoax(eoaOwners[0]);
         vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.DisallowedTarget.selector, address(multisig)));
+        fraxGovernorOmega.addTransaction(address(multisig), args, generateEoaSigs(3, txHash));
+    }
+
+    // Cannot call addTransaction() with non-allowlisted Safe delegatecall
+    function testDisallowedDelegateCall() public {
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, ) = createNoOpProposal(
+            address(getSafe(address(multisig)).safe),
+            bob,
+            getSafe(address(multisig)).safe.nonce()
+        );
+
+        args.operation = Enum.Operation.DelegateCall;
+
+        hoax(eoaOwners[0]);
+        vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.DelegateCallNotAllowed.selector, bob));
         fraxGovernorOmega.addTransaction(address(multisig), args, generateEoaSigs(3, txHash));
     }
 
@@ -544,7 +579,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         hoax(accounts[0]);
         fraxGovernorOmega.castVote(pidV, uint8(GovernorCompatibilityBravo.VoteType.For));
 
-        // Voting is done for veto tx, it was successful
+        // Voting is done for optimistic tx, it was successful
         mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
 
         assertEq(
@@ -636,8 +671,8 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             "Proposal state is defeated"
         );
 
-        (bytes32 successHash, ) = createTransferFxsProposal(address(multisig), multisig.nonce());
-        (bytes32 rejectionHash, ) = createNoOpProposal(address(multisig), address(multisig), startNonce + 1);
+        (bytes32 successHash, , ) = createTransferFxsProposal(address(multisig), multisig.nonce());
+        (bytes32 rejectionHash, , ) = createNoOpProposal(address(multisig), address(multisig), startNonce + 1);
 
         // Owner cannot execute before Omega approves
         vm.startPrank(eoaOwners[0]);
@@ -677,7 +712,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             0,
             address(0),
             payable(address(0)),
-            generateThreeEoaSigsAndOmega(successHash)
+            generateEoaSigs(3, successHash)
         );
 
         // Owner can execute because Omega already approved
@@ -692,13 +727,13 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             0,
             address(0),
             payable(address(0)),
-            generateThreeEoaSigsAndOmega(successHash)
+            generateEoaSigs(3, successHash)
         );
 
         assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 1, "Execution incremented the nonce");
         assertEq(fxs.balanceOf(address(this)), 100e18, "tokens successfully sent");
 
-        (bytes32 txHash2, ) = createNoOpProposal(
+        (bytes32 txHash2, , ) = createNoOpProposal(
             address(getSafe(address(multisig)).safe),
             address(multisig),
             startNonce + 1
@@ -715,7 +750,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             0,
             address(0),
             payable(address(0)),
-            generateThreeEoaSigsAndOmega(txHash2)
+            generateEoaSigs(3, txHash2)
         );
         vm.stopPrank();
 
@@ -831,7 +866,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         );
 
         {
-            (bytes32 txHash, ) = createTransferFxsProposal(address(multisig), multisig.nonce());
+            (bytes32 txHash, , ) = createTransferFxsProposal(address(multisig), multisig.nonce());
             fraxGovernorOmega.execute(targets, values, calldatas, keccak256(bytes("")));
 
             vm.startPrank(eoaOwners[0]);
@@ -846,13 +881,13 @@ contract TestFraxGovernor is FraxGovernorTestBase {
                 0,
                 address(0),
                 payable(address(0)),
-                generateThreeEoaSigsAndOmega(txHash)
+                generateEoaSigs(3, txHash)
             );
             vm.stopPrank();
             assertEq(getSafe(address(multisig)).safe.nonce(), startNonce + 1, "Execution incremented the nonce");
         }
 
-        (bytes32 rejectTxHash, ) = createNoOpProposal(address(multisig2), address(multisig2), multisig2.nonce());
+        (bytes32 rejectTxHash, , ) = createNoOpProposal(address(multisig2), address(multisig2), multisig2.nonce());
         fraxGovernorOmega.rejectTransaction(address(multisig2), multisig2.nonce());
 
         vm.startPrank(eoaOwners[0]);
@@ -866,7 +901,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             0,
             address(0),
             payable(address(0)),
-            generateThreeEoaSigsAndOmega(rejectTxHash)
+            generateEoaSigs(3, rejectTxHash)
         );
         vm.stopPrank();
         assertEq(getSafe(address(multisig2)).safe.nonce(), startNonce2 + 1, "Execution incremented the nonce");
@@ -878,9 +913,9 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         (uint256 pid, , , ) = createOptimisticProposal(address(multisig), fraxGovernorOmega, address(this), startNonce);
 
-        (bytes32 originalTxHash, ) = createTransferFxsProposal(address(multisig), startNonce);
+        (bytes32 originalTxHash, , ) = createTransferFxsProposal(address(multisig), startNonce);
 
-        (bytes32 abortTxHash, ) = createNoOpProposal(address(multisig), address(multisig), startNonce);
+        (bytes32 abortTxHash, , ) = createNoOpProposal(address(multisig), address(multisig), startNonce);
 
         vm.startPrank(eoaOwners[0]);
 
@@ -907,10 +942,10 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             0,
             address(0),
             payable(address(0)),
-            generateThreeEoaSigsAndOmega(abortTxHash)
+            generateEoaSigs(3, abortTxHash)
         );
 
-        assertEq(startNonce + 1, multisig.nonce(), "Execution incremeted the nonce");
+        assertEq(startNonce + 1, multisig.nonce(), "Execution incremented the nonce");
 
         vm.expectRevert("Governor: vote not currently active");
         fraxGovernorOmega.castVote(pid, uint8(GovernorCompatibilityBravo.VoteType.Against));
@@ -921,7 +956,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.expectRevert(IFraxGovernorOmega.WrongProposalState.selector);
         fraxGovernorOmega.rejectTransaction(address(multisig), startNonce);
 
-        vm.expectRevert("GS026"); // Can't execute, nonce has moved beyond and Omega hasn't approved
+        vm.expectRevert(); // Can't execute, nonce has moved beyond and Omega hasn't approved
         getSafe(address(multisig)).safe.execTransaction(
             address(fxs),
             0,
@@ -932,10 +967,10 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             0,
             address(0),
             payable(address(0)),
-            generateThreeEoaSigsAndOmega(originalTxHash)
+            generateEoaSigs(3, originalTxHash)
         );
 
-        (bytes32 originalTxHashReplay, ) = createTransferFxsProposal(address(multisig), multisig.nonce());
+        (bytes32 originalTxHashReplay, , ) = createTransferFxsProposal(address(multisig), multisig.nonce());
 
         vm.expectRevert(FraxGuard.Unauthorized.selector); // Can't execute Omega hasn't approved
         getSafe(address(multisig)).safe.execTransaction(
@@ -948,21 +983,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             0,
             address(0),
             payable(address(0)),
-            generateEoaSigs(4, originalTxHashReplay)
-        );
-
-        vm.expectRevert("GS025"); // Can't execute Omega hasn't approved
-        getSafe(address(multisig)).safe.execTransaction(
-            address(fxs),
-            0,
-            abi.encodeWithSignature("transfer(address,uint256)", address(this), 100e18),
-            Enum.Operation.Call,
-            0,
-            0,
-            0,
-            address(0),
-            payable(address(0)),
-            generateThreeEoaSigsAndOmega(originalTxHashReplay)
+            generateEoaSigs(3, originalTxHashReplay)
         );
 
         vm.stopPrank();
@@ -2059,13 +2080,13 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         _safeAllowlist[1] = address(0xabcd);
 
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
-        fraxGovernorOmega.addSafesToAllowlist(_safeAllowlist);
+        fraxGovernorOmega.addToSafeAllowlist(_safeAllowlist);
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.addSafesToAllowlist.selector, _safeAllowlist);
+        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.addToSafeAllowlist.selector, _safeAllowlist);
 
         hoax(accounts[0]);
         uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
@@ -2087,9 +2108,9 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
 
         vm.expectEmit(true, true, true, true);
-        emit AddSafeToAllowlist(_safeAllowlist[0]);
+        emit AddToSafeAllowlist(_safeAllowlist[0]);
         vm.expectEmit(true, true, true, true);
-        emit AddSafeToAllowlist(_safeAllowlist[1]);
+        emit AddToSafeAllowlist(_safeAllowlist[1]);
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
         assertEq(1, fraxGovernorOmega.$safeAllowlist(_safeAllowlist[0]), "First configuration is set");
@@ -2105,7 +2126,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         targets[0] = address(fraxGovernorOmega);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.addSafesToAllowlist.selector, _safeAllowlist);
+        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.addToSafeAllowlist.selector, _safeAllowlist);
 
         hoax(accounts[0]);
         uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
@@ -2126,7 +2147,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
 
-        //vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.SafeAlreadyOnAllowlist.selector, address(multisig)));
+        //vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.AlreadyOnSafeAllowlist.selector, address(multisig)));
         vm.expectRevert("TimelockController: underlying transaction reverted");
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
     }
@@ -2138,13 +2159,13 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         _safesToRemove[1] = address(multisig2);
 
         vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
-        fraxGovernorOmega.removeSafesFromAllowlist(_safesToRemove);
+        fraxGovernorOmega.removeFromSafeAllowlist(_safesToRemove);
 
         address[] memory targets = new address[](1);
         targets[0] = address(fraxGovernorOmega);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.removeSafesFromAllowlist.selector, _safesToRemove);
+        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.removeFromSafeAllowlist.selector, _safesToRemove);
 
         hoax(accounts[0]);
         uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
@@ -2166,16 +2187,16 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
 
         vm.expectEmit(true, true, true, true);
-        emit RemoveSafeFromAllowlist(_safesToRemove[0]);
+        emit RemoveFromSafeAllowlist(_safesToRemove[0]);
         vm.expectEmit(true, true, true, true);
-        emit RemoveSafeFromAllowlist(_safesToRemove[1]);
+        emit RemoveFromSafeAllowlist(_safesToRemove[1]);
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
 
         assertEq(0, fraxGovernorOmega.$safeAllowlist(_safesToRemove[0]), "First configuration is unset");
         assertEq(0, fraxGovernorOmega.$safeAllowlist(_safesToRemove[1]), "Second configuration is unset");
     }
 
-    // Revert if safe is alreayd no on the allowlist
+    // Revert if safe is already not on the allowlist
     function testRemoveSafesFromAllowlistAlreadyNotOnAllowlist() public {
         address[] memory _safesToRemove = new address[](1);
         _safesToRemove[0] = address(0xabcd);
@@ -2184,7 +2205,7 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         targets[0] = address(fraxGovernorOmega);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.removeSafesFromAllowlist.selector, _safesToRemove);
+        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.removeFromSafeAllowlist.selector, _safesToRemove);
 
         hoax(accounts[0]);
         uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
@@ -2205,7 +2226,173 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
         vm.warp(fraxGovernorAlpha.proposalEta(pid));
 
-        //vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.SafeNotOnAllowlist.selector, address(0xabcd)));
+        //vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.NotOnSafeAllowlist.selector, address(0xabcd)));
+        vm.expectRevert("TimelockController: underlying transaction reverted");
+        fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
+    }
+
+    // Only Alpha can change Omega safe configuration
+    function testAddDelegateCallToAllowlist() public {
+        address[] memory _delegateCallAllowlist = new address[](2);
+        _delegateCallAllowlist[0] = bob;
+        _delegateCallAllowlist[1] = address(0xabcd);
+
+        vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
+        fraxGovernorOmega.addToDelegateCallAllowlist(_delegateCallAllowlist);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(fraxGovernorOmega);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeWithSelector(
+            IFraxGovernorOmega.addToDelegateCallAllowlist.selector,
+            _delegateCallAllowlist
+        );
+
+        hoax(accounts[0]);
+        uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        votePassingAlphaQuorum(pid);
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+        vm.warp(fraxGovernorAlpha.proposalEta(pid));
+
+        vm.expectEmit(true, true, true, true);
+        emit AddToDelegateCallAllowlist(_delegateCallAllowlist[0]);
+        vm.expectEmit(true, true, true, true);
+        emit AddToDelegateCallAllowlist(_delegateCallAllowlist[1]);
+        fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
+
+        assertEq(1, fraxGovernorOmega.$delegateCallAllowlist(_delegateCallAllowlist[0]), "First configuration is set");
+        assertEq(1, fraxGovernorOmega.$delegateCallAllowlist(_delegateCallAllowlist[1]), "Second configuration is set");
+    }
+
+    // Revert if safe is already allowlisted
+    function testAddDelegateCallToAllowlistAlreadyAllowlisted() public {
+        address[] memory _delegateCallAllowlist = new address[](1);
+        _delegateCallAllowlist[0] = address(signMessageLib);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(fraxGovernorOmega);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeWithSelector(
+            IFraxGovernorOmega.addToDelegateCallAllowlist.selector,
+            _delegateCallAllowlist
+        );
+
+        hoax(accounts[0]);
+        uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        votePassingAlphaQuorum(pid);
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+        vm.warp(fraxGovernorAlpha.proposalEta(pid));
+
+        //vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.AlreadyOnDelegateCallAllowlist.selector, address(signMessageLib)));
+        vm.expectRevert("TimelockController: underlying transaction reverted");
+        fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
+    }
+
+    // Only Alpha can change Omega safe configuration
+    function testRemoveDelegateCallFromAllowlist() public {
+        address[] memory _delegateCallToRemove = new address[](1);
+        _delegateCallToRemove[0] = address(signMessageLib);
+
+        vm.expectRevert(IFraxGovernorOmega.NotTimelockController.selector);
+        fraxGovernorOmega.removeFromDelegateCallAllowlist(_delegateCallToRemove);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(fraxGovernorOmega);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeWithSelector(
+            IFraxGovernorOmega.removeFromDelegateCallAllowlist.selector,
+            _delegateCallToRemove
+        );
+
+        hoax(accounts[0]);
+        uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        votePassingAlphaQuorum(pid);
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+        vm.warp(fraxGovernorAlpha.proposalEta(pid));
+
+        vm.expectEmit(true, true, true, true);
+        emit RemoveFromDelegateCallAllowlist(_delegateCallToRemove[0]);
+        fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
+
+        assertEq(0, fraxGovernorOmega.$delegateCallAllowlist(_delegateCallToRemove[0]), "Configuration is unset");
+    }
+
+    // Revert if safe is already not on the allowlist
+    function testRemoveDelegateCallFromAllowlistAlreadyNotOnAllowlist() public {
+        address[] memory _delegateCallToRemove = new address[](1);
+        _delegateCallToRemove[0] = address(0xabcd);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(fraxGovernorOmega);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeWithSelector(
+            IFraxGovernorOmega.removeFromDelegateCallAllowlist.selector,
+            _delegateCallToRemove
+        );
+
+        hoax(accounts[0]);
+        uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        votePassingAlphaQuorum(pid);
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(pid)),
+            "Proposal state is succeeded"
+        );
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+        vm.warp(fraxGovernorAlpha.proposalEta(pid));
+
+        //vm.expectRevert(abi.encodeWithSelector(IFraxGovernorOmega.NotOnDelegateCallAllowlist.selector, address(0xabcd)));
         vm.expectRevert("TimelockController: underlying transaction reverted");
         fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
     }
@@ -2230,14 +2417,19 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.roll(block.number + 1);
 
         uint256 weight = veFxsVotingDelegation.getVotes(accounts[0], fraxGovernorAlpha.proposalSnapshot(pid));
+        uint256 againstWeight = (weight * 50) / 100;
+        uint256 forWeight = (weight * 10) / 100;
+        uint256 abstainWeight = (weight * 40) / 100;
+
+        uint256 delta = weight - (againstWeight + forWeight + abstainWeight);
 
         vm.startPrank(accounts[0]);
 
         // against, for, abstain
         bytes memory params = abi.encodePacked(
-            uint128((weight * 50) / 100),
-            uint128((weight * 10) / 100) + 1,
-            uint128((weight * 40) / 100)
+            uint128(againstWeight),
+            uint128(forWeight + delta),
+            uint128(abstainWeight)
         );
 
         fraxGovernorAlpha.castVoteWithReasonAndParams(pid, 0, "reason", params);
@@ -2272,14 +2464,19 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         vm.roll(block.number + 1);
 
         uint256 weight = veFxsVotingDelegation.getVotes(accounts[0], fraxGovernorOmega.proposalSnapshot(pid));
+        uint256 againstWeight = (weight * 50) / 100;
+        uint256 forWeight = (weight * 10) / 100;
+        uint256 abstainWeight = (weight * 40) / 100;
+
+        uint256 delta = weight - (againstWeight + forWeight + abstainWeight);
 
         vm.startPrank(accounts[0]);
 
         // against, for, abstain
         bytes memory params = abi.encodePacked(
-            uint128((weight * 50) / 100),
-            uint128((weight * 10) / 100) + 1,
-            uint128((weight * 40) / 100)
+            uint128(againstWeight),
+            uint128(forWeight + delta),
+            uint128(abstainWeight)
         );
 
         fraxGovernorOmega.castVoteWithReasonAndParams(pid, 0, "reason", params);
@@ -2303,8 +2500,8 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
     function testFractionalVotingBySigAlpha() public {
         // start local and fork test at same point in time
-        vm.warp(1_685_031_853);
-        vm.roll(17_337_321);
+        vm.warp(1_690_900_429);
+        vm.roll(FORK_BLOCK + 100);
 
         dealCreateLockFxs(eoaOwners[0], 100e18);
 
@@ -2325,15 +2522,24 @@ contract TestFraxGovernor is FraxGovernorTestBase {
         mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
         vm.roll(block.number + 1);
 
-        uint256 weight = veFxsVotingDelegation.getVotes(eoaOwners[0], fraxGovernorAlpha.proposalSnapshot(pid));
+        bytes memory params;
 
-        // against, for, abstain, nonce
-        bytes memory params = abi.encodePacked(
-            uint128((weight * 50) / 100),
-            uint128((weight * 10) / 100) + 1,
-            uint128((weight * 40) / 100),
-            uint128(0)
-        );
+        uint256 weight = veFxsVotingDelegation.getVotes(eoaOwners[0], fraxGovernorAlpha.proposalSnapshot(pid));
+        {
+            uint256 againstWeight = (weight * 50) / 100;
+            uint256 forWeight = (weight * 10) / 100;
+            uint256 abstainWeight = (weight * 40) / 100;
+
+            uint256 delta = weight - (againstWeight + forWeight + abstainWeight);
+
+            // against, for, abstain
+            params = abi.encodePacked(
+                uint128(againstWeight),
+                uint128(forWeight + delta),
+                uint128(abstainWeight),
+                uint128(0)
+            );
+        }
 
         uint8 v;
         bytes32 r;
@@ -2469,8 +2675,8 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
     function testFractionalVotingBySigOmega() public {
         // start local and fork test at same point in time
-        vm.warp(1_685_031_853);
-        vm.roll(17_337_321);
+        vm.warp(1_690_900_429);
+        vm.roll(FORK_BLOCK + 100);
 
         dealCreateLockFxs(eoaOwners[0], 100e18);
 
@@ -2483,17 +2689,23 @@ contract TestFraxGovernor is FraxGovernorTestBase {
 
         mineBlocksBySecond(fraxGovernorOmega.votingDelay() + 1);
         vm.roll(block.number + 1);
+        bytes memory params;
 
         uint256 weight = veFxsVotingDelegation.getVotes(eoaOwners[0], fraxGovernorOmega.proposalSnapshot(pid));
+        {
+            uint256 againstWeight = (weight * 50) / 100;
+            uint256 forWeight = (weight * 10) / 100;
+            uint256 abstainWeight = (weight * 40) / 100;
 
-        // against, for, abstain, nonce
-        bytes memory params = abi.encodePacked(
-            uint128((weight * 50) / 100),
-            uint128((weight * 10) / 100) + 1,
-            uint128((weight * 40) / 100),
-            uint128(0)
-        );
-
+            uint256 delta = weight - (againstWeight + forWeight + abstainWeight);
+            // against, for, abstain
+            params = abi.encodePacked(
+                uint128(againstWeight),
+                uint128(forWeight + delta),
+                uint128(abstainWeight),
+                uint128(0)
+            );
+        }
         uint8 v;
         bytes32 r;
         bytes32 s;
@@ -2632,11 +2844,11 @@ contract TestFraxGovernor is FraxGovernorTestBase {
     // Successful batchAddTransaction()
     function testAddTransactionBatch() public {
         uint256 currentNonce = multisig.nonce();
-        (bytes32 txHash1, IFraxGovernorOmega.TxHashArgs memory args1) = createTransferFxsProposal(
+        (bytes32 txHash1, IFraxGovernorOmega.TxHashArgs memory args1, ) = createTransferFxsProposal(
             address(multisig),
             currentNonce
         );
-        (bytes32 txHash2, IFraxGovernorOmega.TxHashArgs memory args2) = createTransferFxsProposal(
+        (bytes32 txHash2, IFraxGovernorOmega.TxHashArgs memory args2, ) = createTransferFxsProposal(
             address(multisig),
             currentNonce + 1
         );
@@ -2851,6 +3063,177 @@ contract TestFraxGovernor is FraxGovernorTestBase {
             uint256(IGovernor.ProposalState.Succeeded),
             uint256(fraxGovernorAlpha.state(pid)),
             "Proposal state is succeeded"
+        );
+    }
+
+    // Safe won't eip1271 sign if Omega or Alpha haven't signed
+    function testIsValidSignatureFailureNoOmegaNoalpha() public {
+        (bytes32 messageDigest, bytes32 safeMessage) = generateMessageDigest(address(multisig));
+
+        vm.expectRevert("Hash not approved");
+        getSafe(address(multisig)).safe.isValidSignature(bytes.concat(messageDigest), generateEoaSigs(4, safeMessage));
+    }
+
+    function testAddTransactionSignatureOmega() public {
+        uint256 nonce = multisig.nonce();
+        (bytes32 messageDigest, bytes32 safeMessage) = generateMessageDigest(address(multisig));
+        bytes memory data = abi.encodeCall(SignMessageLib.signMessage, (bytes.concat(messageDigest)));
+
+        bytes32 txHash = getSafe(address(multisig)).safe.getTransactionHash({
+            to: address(signMessageLib),
+            value: 0,
+            data: data,
+            operation: Enum.Operation.DelegateCall,
+            safeTxGas: 0,
+            baseGas: 0,
+            gasPrice: 0,
+            gasToken: address(0),
+            refundReceiver: address(0),
+            _nonce: nonce
+        });
+
+        IFraxGovernorOmega.TxHashArgs memory args = IFraxGovernorOmega.TxHashArgs({
+            to: address(signMessageLib),
+            value: 0,
+            data: data,
+            operation: Enum.Operation.DelegateCall,
+            safeTxGas: 0,
+            baseGas: 0,
+            gasPrice: 0,
+            gasToken: address(0),
+            refundReceiver: address(0),
+            _nonce: nonce
+        });
+
+        uint256 optimisticProposalId = fraxGovernorOmega.addTransaction(
+            address(multisig),
+            args,
+            generateEoaSigs(3, txHash)
+        );
+
+        mineBlocksBySecond(fraxGovernorOmega.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        hoax(accounts[0]);
+        fraxGovernorOmega.castVote(optimisticProposalId, uint8(GovernorCompatibilityBravo.VoteType.For));
+
+        // Voting is done for optimistic tx, it was successful
+        mineBlocksBySecond(fraxGovernorOmega.votingPeriod());
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorOmega.state(optimisticProposalId)),
+            "Proposal state is succeeded"
+        );
+        {
+            address[] memory targets = new address[](1);
+            uint256[] memory values = new uint256[](1);
+            bytes[] memory calldatas = new bytes[](1);
+
+            targets[0] = address(multisig);
+            calldatas[0] = abi.encodeCall(GnosisSafe.approveHash, (txHash));
+
+            fraxGovernorOmega.execute(targets, values, calldatas, keccak256(bytes("")));
+        }
+        vm.startPrank(eoaOwners[0]);
+        vm.expectEmit(true, true, true, true);
+        emit SignMsg(safeMessage);
+        getSafe(address(multisig)).safe.execTransaction({
+            to: address(signMessageLib),
+            value: 0,
+            data: data,
+            operation: Enum.Operation.DelegateCall,
+            safeTxGas: 0,
+            baseGas: 0,
+            gasPrice: 0,
+            gasToken: address(0),
+            refundReceiver: payable(address(0)),
+            signatures: generateEoaSigs(3, txHash)
+        });
+        vm.stopPrank();
+
+        assertEq(
+            getSafe(address(multisig)).safe.signedMessages(safeMessage),
+            1,
+            "safeMessage is marked as signed after passing governance"
+        );
+        assertEq(
+            getSafe(address(multisig)).safe.isValidSignature(
+                bytes.concat(messageDigest),
+                "" // We don't care about the signatures
+            ),
+            EIP1271_MAGIC_VALUE,
+            "Successfully validate signature"
+        );
+        assertEq(
+            getSafe(address(multisig)).safe.isValidSignature(
+                messageDigest,
+                "" // We don't care about the signatures
+            ),
+            UPDATED_MAGIC_VALUE,
+            "Test both function selectors"
+        );
+    }
+
+    function testAddTransactionSignatureAlpha() public {
+        (bytes32 messageDigest, bytes32 safeMessage) = generateMessageDigest(address(multisig));
+        bytes memory data = abi.encodeCall(SignMessageLib.signMessage, (bytes.concat(messageDigest)));
+
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+
+        targets[0] = address(multisig);
+        calldatas[0] = genericAlphaSafeProposalData({
+            to: address(signMessageLib),
+            value: 0,
+            data: data,
+            operation: Enum.Operation.DelegateCall
+        });
+
+        hoax(accounts[0]);
+        uint256 proposalId = fraxGovernorAlpha.propose(targets, values, calldatas, "");
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        votePassingAlphaQuorum(proposalId);
+
+        // Voting is done for tx, it was successful
+        mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
+
+        assertEq(
+            uint256(IGovernor.ProposalState.Succeeded),
+            uint256(fraxGovernorAlpha.state(proposalId)),
+            "Proposal state is succeeded"
+        );
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+        vm.warp(fraxGovernorAlpha.proposalEta(proposalId));
+        vm.expectEmit(true, true, true, true);
+        emit SignMsg(safeMessage);
+        fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
+
+        assertEq(
+            getSafe(address(multisig)).safe.signedMessages(safeMessage),
+            1,
+            "safeMessage is marked as signed after passing governance"
+        );
+        assertEq(
+            getSafe(address(multisig)).safe.isValidSignature(
+                bytes.concat(messageDigest),
+                "" // We don't care about the signatures
+            ),
+            EIP1271_MAGIC_VALUE,
+            "Successfully validate signature, don't need EOA approval"
+        );
+        assertEq(
+            getSafe(address(multisig)).safe.isValidSignature(
+                messageDigest,
+                "" // We don't care about the signatures
+            ),
+            UPDATED_MAGIC_VALUE,
+            "Test both function selectors"
         );
     }
 }

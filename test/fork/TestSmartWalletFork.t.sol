@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "frax-std/FraxTest.sol";
 import { IVeFxsVotingDelegation } from "../../src/interfaces/IVeFxsVotingDelegation.sol";
-import { deployVeFxsVotingDelegation } from "../../script/DeployFraxGovernance.s.sol";
+import { deployVeFxsVotingDelegation } from "../../script/DeployVeFxsVotingDelegation.s.sol";
 import { Constants } from "../../script/Constants.sol";
 
 contract TestSmartWalletFork is FraxTest {

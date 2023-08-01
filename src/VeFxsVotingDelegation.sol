@@ -489,7 +489,7 @@ contract VeFxsVotingDelegation is EIP712, IERC5805 {
             }
 
             // NOTE: oldWeightOldDelegate has had voting power decay since the previous event, meaning that
-            // this event shouldn't be relied up. We did our best to conform to the standard.
+            // this event shouldn't be relied on. We did our best to conform to the standard.
             emit DelegateVotesChanged({
                 delegate: previousDelegation.delegate,
                 previousBalance: oldWeightOldDelegate,
@@ -553,7 +553,7 @@ contract VeFxsVotingDelegation is EIP712, IERC5805 {
         });
 
         // NOTE: oldWeightNewDelegate has had voting power decay since the previous event, meaning that
-        // this event shouldn't be relied up. We did our best to conform to the standard.
+        // this event shouldn't be relied on. We did our best to conform to the standard.
         emit DelegateVotesChanged({
             delegate: newDelegate,
             previousBalance: oldWeightNewDelegate,

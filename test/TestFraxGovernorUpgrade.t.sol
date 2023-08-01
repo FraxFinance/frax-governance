@@ -8,6 +8,7 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
     TimelockController timelockControllerUpgrade;
     IFraxGovernorOmega fraxGovernorOmegaUpgrade;
     FraxGuard fraxGuardUpgrade;
+    FraxCompatibilityFallbackHandler fraxCompatibilityFallbackHandlerUpgrade;
 
     function _upgradeSetUp() internal {
         (address payable _timelockController, , ) = deployTimelockController(address(this));
@@ -28,13 +29,26 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
         address[] memory safeAllowlist = new address[](1);
         safeAllowlist[0] = address(multisig);
 
+        address[] memory delegateCallAllowlist = new address[](1);
+        delegateCallAllowlist[0] = address(signMessageLib);
+
         (address payable _fraxGovernorOmega, , ) = deployFraxGovernorOmega(
             address(veFxs),
             address(veFxsVotingDelegation),
             safeAllowlist,
+            delegateCallAllowlist,
             _timelockController
         );
         fraxGovernorOmegaUpgrade = IFraxGovernorOmega(_fraxGovernorOmega);
+
+        assertEq(
+            1,
+            fraxGovernorOmegaUpgrade.$safeAllowlist(address(multisig)),
+            "New omega allowlist configuration is set on deploy"
+        );
+
+        (address _fraxCompatibilityFallbackHandler, ) = deployFraxCompatibilityFallbackHandler();
+        fraxCompatibilityFallbackHandlerUpgrade = FraxCompatibilityFallbackHandler(_fraxCompatibilityFallbackHandler);
 
         (address _fraxGuard, , ) = deployFraxGuard(_fraxGovernorOmega);
         fraxGuardUpgrade = FraxGuard(_fraxGuard);
@@ -47,9 +61,9 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
 
     // create and execute proposal to remove old frxGov from multisig and set up with new frxGov
     function testUpgradeGovernance() public {
-        address[] memory targets = new address[](5);
-        uint256[] memory values = new uint256[](5);
-        bytes[] memory calldatas = new bytes[](5);
+        address[] memory targets = new address[](6);
+        uint256[] memory values = new uint256[](6);
+        bytes[] memory calldatas = new bytes[](6);
         DeployedSafe _safe = getSafe(address(multisig)).safe;
 
         // Switch fraxGuard to new one
@@ -90,7 +104,7 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
 
         targets[3] = address(fraxGovernorOmega);
         calldatas[3] = abi.encodeWithSelector(
-            IFraxGovernorOmega.removeSafesFromAllowlist.selector,
+            IFraxGovernorOmega.removeFromSafeAllowlist.selector,
             _safesToRemoveFromAllowlist
         );
 
@@ -104,6 +118,14 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
                 address(fraxGovernorAlphaUpgrade), // prevModule
                 address(fraxGovernorAlpha) // module
             ),
+            Enum.Operation.Call
+        );
+
+        targets[5] = address(multisig);
+        calldatas[5] = genericAlphaSafeProposalData(
+            address(multisig),
+            0,
+            abi.encodeWithSignature("setFallbackHandler(address)", address(fraxCompatibilityFallbackHandlerUpgrade)),
             Enum.Operation.Call
         );
 
@@ -146,6 +168,12 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
             "New Frax Guard is set"
         );
 
+        assertEq(
+            address(fraxCompatibilityFallbackHandlerUpgrade),
+            _bytesToAddress(_safe.getStorageAt({ offset: FALLBACK_HANDLER_OFFSET, length: 1 })),
+            "New FraxCompatibilityFallbackHandlerUpgrade is set"
+        );
+
         assertTrue(_safe.isModuleEnabled(address(fraxGovernorAlphaUpgrade)), "New Alpha is a module");
 
         assertFalse(_safe.isOwner(address(fraxGovernorOmega)), "Old Omega removed as safe owner");
@@ -157,50 +185,6 @@ contract TestFraxGovernorUpgrade is FraxGovernorTestBase {
         assertFalse(_safe.isModuleEnabled(address(fraxGovernorAlpha)), "Old Alpha removed as module");
 
         assertEq(_safe.getOwners().length, 6, "6 total safe owners");
-        assertEq(_safe.getThreshold(), 4, "4 signatures required");
-
-        address[] memory targets2 = new address[](1);
-        uint256[] memory values2 = new uint256[](1);
-        bytes[] memory calldatas2 = new bytes[](1);
-
-        address[] memory _safeAllowlist = new address[](1);
-        _safeAllowlist[0] = address(multisig);
-
-        // Add safe to new Omega's allowlist
-        targets[0] = address(fraxGovernorOmegaUpgrade);
-        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.addSafesToAllowlist.selector, _safeAllowlist);
-
-        hoax(accounts[0]);
-        uint256 proposalIdUpgrade = fraxGovernorAlphaUpgrade.propose(targets2, values2, calldatas2, "");
-
-        mineBlocksBySecond(fraxGovernorAlphaUpgrade.votingDelay() + 1);
-        vm.roll(block.number + 1);
-
-        for (uint256 i = 0; i < accounts.length; ++i) {
-            if (uint256(fraxGovernorAlphaUpgrade.state(proposalIdUpgrade)) == uint256(IGovernor.ProposalState.Active)) {
-                hoax(accounts[i]);
-                fraxGovernorAlphaUpgrade.castVote(proposalIdUpgrade, uint8(GovernorCompatibilityBravo.VoteType.For));
-            }
-        }
-
-        mineBlocksBySecond(fraxGovernorAlphaUpgrade.votingPeriod());
-
-        assertEq(
-            uint256(IGovernor.ProposalState.Succeeded),
-            uint256(fraxGovernorAlphaUpgrade.state(proposalIdUpgrade)),
-            "Proposal state is succeeded"
-        );
-
-        fraxGovernorAlphaUpgrade.queue(targets2, values2, calldatas2, keccak256(bytes("")));
-
-        vm.warp(fraxGovernorAlphaUpgrade.proposalEta(proposalIdUpgrade));
-
-        fraxGovernorAlphaUpgrade.execute(targets2, values2, calldatas2, keccak256(bytes("")));
-
-        assertEq(
-            1,
-            fraxGovernorOmegaUpgrade.$safeAllowlist(_safeAllowlist[0]),
-            "New omega allowlist configuration is set"
-        );
+        assertEq(_safe.getThreshold(), 3, "3 signatures required");
     }
 }

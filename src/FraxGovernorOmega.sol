@@ -35,6 +35,7 @@ struct ConstructorParams {
     address veFxs;
     address veFxsVotingDelegation;
     address[] safeAllowlist;
+    address[] delegateCallAllowlist;
     address payable timelockController;
     uint256 initialVotingDelay;
     uint256 initialVotingPeriod;
@@ -55,19 +56,30 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @notice Configuration and allowlist for Gnosis Safes approved for use with FraxGovernorOmega
     mapping(address safe => uint256 status) public $safeAllowlist;
 
+    /// @notice Allowlist for external contracts allowed for use with Gnosis Safe delegatecall
+    mapping(address contractAddress => uint256 status) public $delegateCallAllowlist;
+
     /// @notice Configuration for voting periods configured per safe. If 0, uses Omega default votingPeriod().
     mapping(address safe => uint256 votingPeriod) public $safeVotingPeriod;
 
     /// @notice Lookup from Gnosis Safe to nonce to corresponding transaction hash
     mapping(address safe => mapping(uint256 safeNonce => bytes32 txHash)) public $gnosisSafeToNonceToTxHash;
 
-    /// @notice The ```AddSafeToAllowlist``` event is emitted when governance adds a safe to the allowlist
+    /// @notice The ```AddToSafeAllowlist``` event is emitted when governance adds a safe to the allowlist
     /// @param safe The address of the Gnosis Safe added
-    event AddSafeToAllowlist(address indexed safe);
+    event AddToSafeAllowlist(address indexed safe);
 
-    /// @notice The ```RemoveSafeFromAllowlist``` event is emitted when governance removes a safe from the allowlist
+    /// @notice The ```RemoveFromSafeAllowlist``` event is emitted when governance removes a safe from the allowlist
     /// @param safe The address of the Gnosis Safe removed
-    event RemoveSafeFromAllowlist(address indexed safe);
+    event RemoveFromSafeAllowlist(address indexed safe);
+
+    /// @notice The ```AddToDelegateCallAllowlist``` event is emitted when governance adds a contract to the allowlist
+    /// @param contractAddress The address of the contract added
+    event AddToDelegateCallAllowlist(address contractAddress);
+
+    /// @notice The ```RemoveFromDelegateCallAllowlist``` event is emitted when governance removes a contract from the allowlist
+    /// @param contractAddress The address of the contract removed
+    event RemoveFromDelegateCallAllowlist(address contractAddress);
 
     /// @notice The ```SafeVotingPeriodSet``` event is emitted when governance changes the voting period for a specific safe
     /// @param safe The address of the Gnosis Safe removed
@@ -104,38 +116,55 @@ contract FraxGovernorOmega is FraxGovernorBase {
         TIMELOCK_CONTROLLER = params.timelockController;
 
         // Assume safes at deploy time are properly configured for frxGov
-        _addSafesToAllowlist(params.safeAllowlist);
+        _addToSafeAllowlist(params.safeAllowlist);
+
+        _addToDelegateCallAllowlist(params.delegateCallAllowlist);
     }
 
-    /// @notice The ```_requireOnlyGovernorAlpha``` function checks if the caller is FraxGovernorAlpha
+    /// @notice The ```_requireOnlyTimelockController``` function checks if the caller is FraxGovernorAlpha's TimelockController
     function _requireOnlyTimelockController() internal view {
         if (msg.sender != TIMELOCK_CONTROLLER) revert IFraxGovernorOmega.NotTimelockController();
     }
 
-    /// @notice The ```_requireAllowlist``` function checks if the safe is on the allowlist
+    /// @notice The ```_requireSafeAllowlist``` function checks if the safe is on the allowlist
     /// @param safe The address of the Gnosis Safe
-    function _requireAllowlist(address safe) internal view {
+    function _requireSafeAllowlist(address safe) internal view {
         if ($safeAllowlist[safe] == 0) revert Unauthorized();
     }
 
-    /// @notice The ```_requireEoaSignatures``` function checks if the provided signatures are EOA signatures
-    /// @dev Disallow the ```v == 0```` and ```v == 1``` cases of ```safe.checkNSignatures()```. This ensures that the signatures passed
-    /// @dev in are from EOAs and disallows the implicit signing from Omega with the ```msg.sender == currentOwner``` case.
+    /// @notice The ```_requireNotOmegaSignature``` function checks if the provided signatures are not Omega approvehash signatures
+    /// @dev Disallow the ```v == 1``` cases of ```safe.checkNSignatures()``` for Omega. This ensures that the signatures passed
+    /// @dev in are from other owners and disallows the implicit signing from Omega with the ```msg.sender == currentOwner``` case.
     /// @param signatures 1 or more packed signature data ({bytes32 r}{bytes32 s}{uint8 v})
     /// @param requiredSignatures The expected amount of EOA signatures
-    function _requireEoaSignatures(bytes memory signatures, uint256 requiredSignatures) internal pure {
+    function _requireNotOmegaSignature(bytes memory signatures, uint256 requiredSignatures) internal view {
         uint8 v;
+        bytes32 r;
         uint256 i;
 
         for (i = 0; i < requiredSignatures; ++i) {
             // Taken from Gnosis Safe SignatureDecoder
+            // The signature format is a compact form of:
+            //   {bytes32 r}{bytes32 s}{uint8 v}
+            // Compact means, uint8 is not padded to 32 bytes.
             /// @solidity memory-safe-assembly
             assembly {
                 let signaturePos := mul(0x41, i)
+                r := mload(add(signatures, add(signaturePos, 0x20)))
+                // Here we are loading the last 32 bytes, including 31 bytes
+                // of 's'. There is no 'mload8' to do this.
+                //
+                // 'byte' is not working due to the Solidity parser, so lets
+                // use the second best option, 'and'
                 v := and(mload(add(signatures, add(signaturePos, 0x41))), 0xff)
             }
-            if (v < 2) {
-                revert IFraxGovernorOmega.WrongSafeSignatureType();
+            // If v is 1 then it is the approved hash safe.checkNSignatures() flow which automatically approves the msg.sender
+            // We restrict this because we don't want omega to count as a signature, since it is the msg.sender in the later call to safe.checkNSignatures()
+            if (v == 1) {
+                address approver = address(uint160(uint256(r)));
+                if (approver == address(this)) {
+                    revert IFraxGovernorOmega.WrongSafeSignatureType();
+                }
             }
         }
     }
@@ -207,7 +236,8 @@ contract FraxGovernorOmega is FraxGovernorBase {
         revert IFraxGovernorOmega.CannotRelay();
     }
 
-    /// @notice The ```addTransaction``` function creates optimistic proposals that correspond to a Gnosis Safe Transaction that was initiated by the Frax Team
+    /// @notice The ```addTransaction``` function creates optimistic proposals that correspond to a Gnosis Safe transaction that was initiated by the Frax Team
+    /// @dev The nonce takes care of hashing a unique proposalId, so we don't need to pass a description.
     /// @param teamSafe Address of allowlisted Gnosis Safe
     /// @param args TxHashArgs of the Gnosis Safe transaction
     /// @param signatures EOA signatures for the Gnosis Safe transaction
@@ -217,21 +247,25 @@ contract FraxGovernorOmega is FraxGovernorBase {
         IFraxGovernorOmega.TxHashArgs calldata args,
         bytes calldata signatures
     ) public returns (uint256 optimisticProposalId) {
-        _requireAllowlist(teamSafe);
+        _requireSafeAllowlist(teamSafe);
 
         // This check stops EOA Safe owners from pushing txs through that skip the more stringent FraxGovernorAlpha
-        // procedures. It disallows Omega from calling safe.approveHash() outside of the
-        // addTransaction() / execute() / rejectTransaction() flow
+        // procedures. It disallows Omega from calling safe.approveHash() / changing Safe state outside of the
+        // addTransaction() / execute() / rejectTransaction() flow.
         if (args.to == teamSafe) {
             revert IFraxGovernorOmega.DisallowedTarget(args.to);
         }
 
-        ISafe safe = ISafe(teamSafe);
-        // Assuming proper configuration, safe has threshold of n + 1, where n is the number of EOA signers.
-        // Subtract by 1 so we're not including Omega, which is a signer.
-        uint256 requiredSignatures = safe.getThreshold() - 1;
+        // Disallow Safe delegatecalls to contracts not on allowlist
+        if (args.operation == Enum.Operation.DelegateCall && $delegateCallAllowlist[args.to] != 1) {
+            revert IFraxGovernorOmega.DelegateCallNotAllowed(args.to);
+        }
 
-        _requireEoaSignatures({ signatures: signatures, requiredSignatures: requiredSignatures });
+        ISafe safe = ISafe(teamSafe);
+        // Assuming proper configuration, safe has threshold of n, where n is the number of EOA signers.
+        uint256 requiredSignatures = safe.getThreshold();
+
+        _requireNotOmegaSignature({ signatures: signatures, requiredSignatures: requiredSignatures });
 
         if ($gnosisSafeToNonceToTxHash[teamSafe][args._nonce] != 0) revert IFraxGovernorOmega.NonceReserved();
         if (args._nonce < safe.nonce()) revert IFraxGovernorOmega.WrongNonce();
@@ -349,13 +383,12 @@ contract FraxGovernorOmega is FraxGovernorBase {
     /// @param teamSafe Address of allowlisted Gnosis Safe
     /// @param signatures EOA signatures for a 0 ether transfer Gnosis Safe transaction with the current nonce
     function abortTransaction(address teamSafe, bytes calldata signatures) external {
-        _requireAllowlist(teamSafe);
+        _requireSafeAllowlist(teamSafe);
         ISafe safe = ISafe(teamSafe);
-        // Assuming proper configuration, safe has threshold of n + 1, where n is the number of EOA signers.
-        // Subtract by 1 so we're not including Omega, which is a signer.
-        uint256 requiredSignatures = safe.getThreshold() - 1;
+        // Assuming proper configuration, safe has threshold of n, where n is the number of EOA signers.
+        uint256 requiredSignatures = safe.getThreshold();
 
-        _requireEoaSignatures({ signatures: signatures, requiredSignatures: requiredSignatures });
+        _requireNotOmegaSignature({ signatures: signatures, requiredSignatures: requiredSignatures });
 
         uint256 nonce = safe.nonce();
 
@@ -410,7 +443,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
         safe.approveHash(rejectTxHash);
     }
 
-    /// @notice The ```setVotingDelay``` function is called by governance to change the amount of time before the voting snapshot
+    /// @notice The ```setVotingDelay``` function is called by Alpha governance to change the amount of time before the voting snapshot
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newVotingDelay New voting delay in seconds
     function setVotingDelay(uint256 newVotingDelay) public override {
@@ -418,7 +451,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _setVotingDelay(newVotingDelay);
     }
 
-    /// @notice The ```setVotingDelayBlocks``` function is called by governance to change the amount of blocks before the voting snapshot
+    /// @notice The ```setVotingDelayBlocks``` function is called by Alpha governance to change the amount of blocks before the voting snapshot
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newVotingDelayBlocks New voting delay in blocks
     function setVotingDelayBlocks(uint256 newVotingDelayBlocks) external {
@@ -426,7 +459,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _setVotingDelayBlocks(newVotingDelayBlocks);
     }
 
-    /// @notice The ```setVotingPeriod``` function is called by governance to change the amount of time a proposal can be voted on
+    /// @notice The ```setVotingPeriod``` function is called by Alpha governance to change the amount of time a proposal can be voted on
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newVotingPeriod New voting period in seconds
     function setVotingPeriod(uint256 newVotingPeriod) public override {
@@ -434,7 +467,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _setVotingPeriod(newVotingPeriod);
     }
 
-    /// @notice The ```setProposalThreshold``` function is called by governance to change the amount of veFXS a proposer needs to call propose()
+    /// @notice The ```setProposalThreshold``` function is called by Alpha governance to change the amount of veFXS a proposer needs to call propose()
     /// @notice proposalThreshold calculation includes all weight delegated to the proposer
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newProposalThreshold New voting period in amount of veFXS
@@ -443,7 +476,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _setProposalThreshold(newProposalThreshold);
     }
 
-    /// @notice The ```updateQuorumNumerator``` function is called by governance to change the numerator / 100 needed for quorum
+    /// @notice The ```updateQuorumNumerator``` function is called by Alpha governance to change the numerator / 100 needed for quorum
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newQuorumNumerator Number expressed as x/100 (percentage)
     function updateQuorumNumerator(uint256 newQuorumNumerator) external override {
@@ -451,7 +484,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _updateQuorumNumerator(newQuorumNumerator);
     }
 
-    /// @notice The ```setVeFxsVotingDelegation``` function is called by governance to change the voting weight ```IERC5805``` contract
+    /// @notice The ```setVeFxsVotingDelegation``` function is called by Alpha governance to change the voting weight ```IERC5805``` contract
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param veFxsVotingDelegation New ```IERC5805``` veFxsVotingDelegation contract address
     function setVeFxsVotingDelegation(address veFxsVotingDelegation) external {
@@ -459,7 +492,7 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _setVeFxsVotingDelegation(veFxsVotingDelegation);
     }
 
-    /// @notice The ```updateShortCircuitNumerator``` function is called by governance to change the short circuit numerator
+    /// @notice The ```updateShortCircuitNumerator``` function is called by Alpha governance to change the short circuit numerator
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param newShortCircuitNumerator Number expressed as x/100 (percentage)
     function updateShortCircuitNumerator(uint256 newShortCircuitNumerator) external {
@@ -467,37 +500,69 @@ contract FraxGovernorOmega is FraxGovernorBase {
         _updateShortCircuitNumerator(newShortCircuitNumerator);
     }
 
-    function _addSafesToAllowlist(address[] memory safes) internal {
+    function _addToSafeAllowlist(address[] memory safes) internal {
         for (uint256 i = 0; i < safes.length; ++i) {
-            if ($safeAllowlist[safes[i]] == 1) revert IFraxGovernorOmega.SafeAlreadyOnAllowlist(safes[i]);
+            if ($safeAllowlist[safes[i]] == 1) revert IFraxGovernorOmega.AlreadyOnSafeAllowlist(safes[i]);
             $safeAllowlist[safes[i]] = 1;
-            emit AddSafeToAllowlist(safes[i]);
+            emit AddToSafeAllowlist(safes[i]);
         }
     }
 
-    /// @notice The ```addSafesToAllowlist``` function is called by governance to allowlist safes for addTransaction()
+    /// @notice The ```addToSafeAllowlist``` function is called by Alpha governance to allowlist safes for addTransaction()
     /// @notice Safes are expected to be properly configured before calling this function
     /// @notice Proper configuration entails having: the FraxGuard set, FraxGovernorOmega set as a signer and FraxGovernorAlpha's TimelockController as a Module
     /// @param safes Array of safe addresses to allowlist
-    function addSafesToAllowlist(address[] calldata safes) external {
+    function addToSafeAllowlist(address[] calldata safes) external {
         _requireOnlyTimelockController();
-        _addSafesToAllowlist(safes);
+        _addToSafeAllowlist(safes);
     }
 
-    /// @notice The ```removeSafesFromAllowlist``` function is called by governance to remove safes from the allowlist
+    /// @notice The ```removeSafesFromAllowlist``` function is called by Alpha governance to remove safes from the allowlist
     /// @dev See TestFraxGovernorUpgrade.t.sol for upgrade path
     /// @param safes Array of safe addresses to remove from allowlist
-    function removeSafesFromAllowlist(address[] calldata safes) external {
+    function removeFromSafeAllowlist(address[] calldata safes) external {
         _requireOnlyTimelockController();
 
         for (uint256 i = 0; i < safes.length; ++i) {
-            if ($safeAllowlist[safes[i]] == 0) revert IFraxGovernorOmega.SafeNotOnAllowlist(safes[i]);
+            if ($safeAllowlist[safes[i]] == 0) revert IFraxGovernorOmega.NotOnSafeAllowlist(safes[i]);
             delete $safeAllowlist[safes[i]];
-            emit RemoveSafeFromAllowlist(safes[i]);
+            emit RemoveFromSafeAllowlist(safes[i]);
         }
     }
 
-    /// @notice The ```setSafeVotingPeriod``` function is called by governance to change the short circuit numerator
+    function _addToDelegateCallAllowlist(address[] memory contracts) internal {
+        for (uint256 i = 0; i < contracts.length; ++i) {
+            if ($delegateCallAllowlist[contracts[i]] == 1) {
+                revert IFraxGovernorOmega.AlreadyOnDelegateCallAllowlist(contracts[i]);
+            }
+            $delegateCallAllowlist[contracts[i]] = 1;
+            emit AddToDelegateCallAllowlist(contracts[i]);
+        }
+    }
+
+    /// @notice The ```addToDelegateCallAllowlist``` function is called by Alpha governance to allowlist contracts for delegatecall with addTransaction()
+    /// @param contracts Array of contract addresses to allowlist
+    function addToDelegateCallAllowlist(address[] calldata contracts) external {
+        _requireOnlyTimelockController();
+        _addToDelegateCallAllowlist(contracts);
+    }
+
+    /// @notice The ```removeFromDelegateCallAllowlist``` function is called by Alpha governance to remove contracts from the allowlist
+    /// @dev See TestFraxGovernorUpgrade.t.sol for upgrade path
+    /// @param contracts Array of contract addresses to remove from allowlist
+    function removeFromDelegateCallAllowlist(address[] calldata contracts) external {
+        _requireOnlyTimelockController();
+
+        for (uint256 i = 0; i < contracts.length; ++i) {
+            if ($delegateCallAllowlist[contracts[i]] == 0) {
+                revert IFraxGovernorOmega.NotOnDelegateCallAllowlist(contracts[i]);
+            }
+            delete $delegateCallAllowlist[contracts[i]];
+            emit RemoveFromDelegateCallAllowlist(contracts[i]);
+        }
+    }
+
+    /// @notice The ```setSafeVotingPeriod``` function is called by Alpha governance to change the short circuit numerator
     /// @dev Only callable by FraxGovernorAlpha governance
     /// @param safe The Gnosis safe to configure
     /// @param newSafeVotingPeriod The voting period specific to safe, set to 0 to go back to Omega's default voting period

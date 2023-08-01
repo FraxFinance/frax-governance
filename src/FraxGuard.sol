@@ -9,7 +9,7 @@ pragma solidity ^0.8.19;
 // | /_/   /_/   \__,_/_/|_|  /_/   /_/_/ /_/\__,_/_/ /_/\___/\___/   |
 // |                                                                  |
 // ====================================================================
-// ========================= FraxGuard ================================
+// ============================ FraxGuard =============================
 // ====================================================================
 // Frax Finance: https://github.com/FraxFinance
 
@@ -32,12 +32,12 @@ import { Enum, ISafe } from "./interfaces/ISafe.sol";
 /// @notice  A Gnosis Safe Guard that restricts Safe transaction execution to Safe owners and requires approval from FraxGovernorOmega
 contract FraxGuard is IERC165, Guard {
     /// @notice The address of the FraxGovernorOmega contract
-    address public immutable FRAX_GOVERNOR_OMEGA_ADDRESS;
+    address public immutable FRAX_GOVERNOR_OMEGA;
 
     /// @notice The ```constructor``` function is called on deployment
     /// @param fraxGovernorOmega The address of the FraxGovernorOmega contract
     constructor(address fraxGovernorOmega) {
-        FRAX_GOVERNOR_OMEGA_ADDRESS = fraxGovernorOmega;
+        FRAX_GOVERNOR_OMEGA = fraxGovernorOmega;
     }
 
     /// @notice The ```checkTransaction``` function is a "callback" from within GnosisSafe::execTransaction() that runs before execution
@@ -77,10 +77,7 @@ contract FraxGuard is IERC165, Guard {
             refundReceiver: refundReceiver,
             _nonce: safe.nonce() - 1 // nonce gets incremented before this function is called
         });
-        if (
-            !safe.isOwner(msgSender) ||
-            safe.approvedHashes({ signer: FRAX_GOVERNOR_OMEGA_ADDRESS, txHash: txHash }) != 1
-        ) {
+        if (!safe.isOwner(msgSender) || safe.approvedHashes({ signer: FRAX_GOVERNOR_OMEGA, txHash: txHash }) != 1) {
             revert Unauthorized();
         }
     }

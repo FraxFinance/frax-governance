@@ -13,6 +13,7 @@ import { SafeTestTools, SafeTestLib, SafeInstance, DeployedSafe, ModuleManager }
 import "safe-contracts/GnosisSafe.sol";
 import "safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 import "safe-tools/CompatibilityFallbackHandler_1_3_0.sol";
+import { SignMessageLib } from "safe-contracts/examples/libraries/SignMessage.sol";
 import { LibSort } from "solady/utils/LibSort.sol";
 import { FraxGovernorAlpha, ConstructorParams } from "../src/FraxGovernorAlpha.sol";
 import { FraxGovernorOmega } from "../src/FraxGovernorOmega.sol";
@@ -23,15 +24,14 @@ import "./utils/VyperDeployer.sol";
 import "../src/interfaces/IFraxGovernorAlpha.sol";
 import "../src/interfaces/IFraxGovernorOmega.sol";
 import { FraxGovernorBase } from "../src/FraxGovernorBase.sol";
-import {
-    deployFraxGovernorAlpha,
-    deployFraxGovernorOmega,
-    deployFraxGuard,
-    deployTimelockController,
-    deployVeFxsVotingDelegation
-} from "script/DeployFraxGovernance.s.sol";
+import { deployFraxGuard } from "script/DeployFraxGuard.s.sol";
+import { deployVeFxsVotingDelegation } from "script/DeployVeFxsVotingDelegation.s.sol";
+import { deployFraxGovernorAlpha, deployTimelockController } from "script/DeployFraxGovernorAlphaAndTimelock.s.sol";
+import { deployFraxGovernorOmega } from "script/DeployFraxGovernorOmega.s.sol";
+import { deployFraxCompatibilityFallbackHandler } from "script/DeployFraxCompatibilityFallbackHandler.s.sol";
 import { deployMockFxs, deployVeFxs } from "../script/test/DeployTestFxs.s.sol";
 import { Constants } from "../script/Constants.sol";
+import { FraxCompatibilityFallbackHandler } from "../src/FraxCompatibilityFallbackHandler.sol";
 
 contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     using SafeTestLib for SafeInstance;
@@ -51,6 +51,8 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     TimelockController timelockController;
     IFraxGovernorOmega fraxGovernorOmega;
     FraxGuard fraxGuard;
+    FraxCompatibilityFallbackHandler fraxCompatibilityFallbackHandler;
+    SignMessageLib signMessageLib;
 
     ERC20 fxs;
     IVeFxs veFxs;
@@ -60,7 +62,11 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     uint256 constant numAccounts = 15;
     uint256 internal constant GUARD_STORAGE_OFFSET =
         33_528_237_782_592_280_163_068_556_224_972_516_439_282_563_014_722_366_175_641_814_928_123_294_921_928;
-    uint256 FORK_BLOCK = 17_330_565;
+    uint256 internal constant FALLBACK_HANDLER_OFFSET =
+        49_122_629_484_629_529_244_014_240_937_346_711_770_925_847_994_644_146_912_111_677_022_347_558_721_749;
+    uint256 FORK_BLOCK = 17_820_607;
+    bytes4 internal constant EIP1271_MAGIC_VALUE = 0x20c13b0b;
+    bytes4 internal constant UPDATED_MAGIC_VALUE = 0x1626ba7e;
 
     VyperDeployer immutable vyperDeployer = new VyperDeployer();
 
@@ -83,6 +89,8 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     }
 
     function _setupDeployAndConfigure() internal {
+        signMessageLib = new SignMessageLib();
+
         (address _veFxsVotingDelegation, , ) = deployVeFxsVotingDelegation(address(veFxs));
         veFxsVotingDelegation = IVeFxsVotingDelegation(_veFxsVotingDelegation);
 
@@ -105,13 +113,31 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         _safeAllowlist[0] = address(multisig);
         _safeAllowlist[1] = address(multisig2);
 
+        address[] memory _delegateCallAllowlist = new address[](1);
+        _delegateCallAllowlist[0] = address(signMessageLib);
+
         (address payable _fraxGovernorOmega, , ) = deployFraxGovernorOmega(
             address(veFxs),
             _veFxsVotingDelegation,
             _safeAllowlist,
+            _delegateCallAllowlist,
             _timelockController
         );
         fraxGovernorOmega = IFraxGovernorOmega(_fraxGovernorOmega);
+
+        (address _fraxCompatibilityFallbackHandler, ) = deployFraxCompatibilityFallbackHandler();
+        fraxCompatibilityFallbackHandler = FraxCompatibilityFallbackHandler(_fraxCompatibilityFallbackHandler);
+
+        setupFraxFallbackHandler({
+            _safe: address(multisig),
+            signer: eoaOwners[0],
+            _handler: _fraxCompatibilityFallbackHandler
+        });
+        setupFraxFallbackHandler({
+            _safe: address(multisig2),
+            signer: eoaOwners[0],
+            _handler: _fraxCompatibilityFallbackHandler
+        });
 
         (address _fraxGuard, , ) = deployFraxGuard(_fraxGovernorOmega);
         fraxGuard = FraxGuard(_fraxGuard);
@@ -124,13 +150,13 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
             _safe: address(multisig),
             signer: eoaOwners[0],
             newOwner: address(fraxGovernorOmega),
-            threshold: 4
+            threshold: 3
         });
         addSignerToSafe({
             _safe: address(multisig2),
             signer: eoaOwners[0],
             newOwner: address(fraxGovernorOmega),
-            threshold: 4
+            threshold: 3
         });
 
         // call setGuard on Safe
@@ -138,7 +164,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         setupFraxGuard({ _safe: address(multisig2), signer: eoaOwners[0], _fraxGuard: address(fraxGuard) });
 
         assertEq(getSafe(address(multisig)).safe.getOwners().length, 6, "6 total safe owners");
-        assertEq(getSafe(address(multisig)).safe.getThreshold(), 4, "4 signatures required");
+        assertEq(getSafe(address(multisig)).safe.getThreshold(), 3, "3 signatures required (+ omega)");
         assert(getSafe(address(multisig)).safe.isModuleEnabled(address(timelockController)));
         assertEq(
             address(fraxGuard),
@@ -147,7 +173,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         );
 
         assertEq(getSafe(address(multisig2)).safe.getOwners().length, 6, "6 total safe owners");
-        assertEq(getSafe(address(multisig2)).safe.getThreshold(), 4, "4 signatures required");
+        assertEq(getSafe(address(multisig2)).safe.getThreshold(), 3, "3 signatures required (+ omega)");
         assert(getSafe(address(multisig2)).safe.isModuleEnabled(address(timelockController)));
         assertEq(
             address(fraxGuard),
@@ -215,8 +241,93 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
 
         fxs = ERC20(Constants.FXS);
         veFxs = IVeFxs(Constants.VE_FXS);
+        signMessageLib = SignMessageLib(Constants.SIGN_MESSAGE_LIB);
 
-        _setupDeployAndConfigure();
+        veFxsVotingDelegation = IVeFxsVotingDelegation(Constants.VE_FXS_VOTING_DELEGATION);
+        timelockController = TimelockController(payable(Constants.FRAX_GOVERNOR_ALPHA_TIMELOCK));
+        fraxGovernorAlpha = IFraxGovernorAlpha(Constants.FRAX_GOVERNOR_ALPHA);
+        fraxGovernorOmega = IFraxGovernorOmega(Constants.FRAX_GOVERNOR_OMEGA);
+        fraxCompatibilityFallbackHandler = FraxCompatibilityFallbackHandler(
+            Constants.FRAX_COMPATIBILITY_FALLBACK_HANDLER
+        );
+
+        setupFraxFallbackHandler({
+            _safe: address(multisig),
+            signer: eoaOwners[0],
+            _handler: address(fraxCompatibilityFallbackHandler)
+        });
+        setupFraxFallbackHandler({
+            _safe: address(multisig2),
+            signer: eoaOwners[0],
+            _handler: address(fraxCompatibilityFallbackHandler)
+        });
+
+        fraxGuard = FraxGuard(Constants.FRAX_GUARD);
+
+        SafeTestLib.enableModule({ instance: getSafe(address(multisig)), module: address(timelockController) });
+        SafeTestLib.enableModule({ instance: getSafe(address(multisig2)), module: address(timelockController) });
+
+        // add frxGovOmega signer
+        addSignerToSafe({
+            _safe: address(multisig),
+            signer: eoaOwners[0],
+            newOwner: address(fraxGovernorOmega),
+            threshold: 3
+        });
+        addSignerToSafe({
+            _safe: address(multisig2),
+            signer: eoaOwners[0],
+            newOwner: address(fraxGovernorOmega),
+            threshold: 3
+        });
+
+        // call setGuard on Safe
+        setupFraxGuard({ _safe: address(multisig), signer: eoaOwners[0], _fraxGuard: address(fraxGuard) });
+        setupFraxGuard({ _safe: address(multisig2), signer: eoaOwners[0], _fraxGuard: address(fraxGuard) });
+
+        // add test safes to omega allow list through alpha governance
+        address[] memory _safeAllowlist = new address[](2);
+        _safeAllowlist[0] = address(multisig);
+        _safeAllowlist[1] = address(multisig2);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(fraxGovernorOmega);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeWithSelector(IFraxGovernorOmega.addToSafeAllowlist.selector, _safeAllowlist);
+
+        hoax(accounts[0]);
+        uint256 pid = fraxGovernorAlpha.propose(targets, values, calldatas, "");
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingDelay() + 1);
+        vm.roll(block.number + 1);
+
+        votePassingAlphaQuorum(pid);
+
+        mineBlocksBySecond(fraxGovernorAlpha.votingPeriod());
+
+        fraxGovernorAlpha.queue(targets, values, calldatas, keccak256(bytes("")));
+        vm.warp(fraxGovernorAlpha.proposalEta(pid));
+
+        fraxGovernorAlpha.execute(targets, values, calldatas, keccak256(bytes("")));
+
+        assertEq(getSafe(address(multisig)).safe.getOwners().length, 6, "6 total safe owners");
+        assertEq(getSafe(address(multisig)).safe.getThreshold(), 3, "3 signatures required (+ omega)");
+        assert(getSafe(address(multisig)).safe.isModuleEnabled(address(timelockController)));
+        assertEq(
+            address(fraxGuard),
+            _bytesToAddress(getSafe(address(multisig)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 })),
+            "Guard is set"
+        );
+
+        assertEq(getSafe(address(multisig2)).safe.getOwners().length, 6, "6 total safe owners");
+        assertEq(getSafe(address(multisig2)).safe.getThreshold(), 3, "3 signatures required (+ omega)");
+        assert(getSafe(address(multisig2)).safe.isModuleEnabled(address(timelockController)));
+        assertEq(
+            address(fraxGuard),
+            _bytesToAddress(getSafe(address(multisig2)).safe.getStorageAt({ offset: GUARD_STORAGE_OFFSET, length: 1 })),
+            "Guard is set"
+        );
 
         mineBlocks(1);
     }
@@ -291,15 +402,15 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         }
     }
 
-    function generateThreeEoaSigsAndOmega(bytes32 txHash) public view returns (bytes memory sigs) {
-        address[] memory sortedAddresses = new address[](eoaOwners.length + 1);
-        for (uint256 i = 0; i < eoaOwners.length; ++i) {
+    function generateThreeEoaSigsAndOmegaPreapproval(bytes32 txHash) public view returns (bytes memory sigs) {
+        address[] memory sortedAddresses = new address[](4);
+        for (uint256 i = 0; i < 3; ++i) {
             sortedAddresses[i] = eoaOwners[i];
         }
-        sortedAddresses[eoaOwners.length] = address(fraxGovernorOmega);
+        sortedAddresses[3] = address(fraxGovernorOmega);
         LibSort.sort(sortedAddresses);
 
-        for (uint256 i = 1; i < 5; ++i) {
+        for (uint256 i = 0; i < sortedAddresses.length; ++i) {
             if (sortedAddresses[i] != address(fraxGovernorOmega)) {
                 (uint8 v, bytes32 r, bytes32 s) = vm.sign(addressToPk[sortedAddresses[i]], txHash);
                 sigs = abi.encodePacked(sigs, r, s, v);
@@ -307,6 +418,43 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
                 sigs = abi.encodePacked(sigs, buildContractPreapprovalSignature(address(fraxGovernorOmega)));
             }
         }
+    }
+
+    function generateMessageDigest(address _safe) public view returns (bytes32 messageDigest, bytes32 safeMessage) {
+        bytes32 _EIP_712_DOMAIN_TYPEHASH = keccak256(
+            abi.encodePacked(
+                "EIP712Domain(",
+                "string name,",
+                "string version,",
+                "uint256 chainId,",
+                "address verifyingContract",
+                ")"
+            )
+        );
+        bytes32 _DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                _EIP_712_DOMAIN_TYPEHASH,
+                keccak256(bytes("Fraxswap V2")), //_NAME_HASH
+                keccak256(bytes("1")), //_VERSION_HASH
+                1, // block.chainid
+                0xCCB26b5CC4e1Ce29521DA281a0107A6672bfe099 // verifyingContract
+            )
+        );
+        bytes32 _PERMIT_TYPEHASH = keccak256(
+            abi.encodePacked(
+                "Permit(",
+                "address owner,",
+                "address spender,",
+                "uint256 value,",
+                "uint256 nonce,",
+                "uint256 deadline",
+                ")"
+            )
+        );
+        bytes32 PERMIT = keccak256(abi.encode(_PERMIT_TYPEHASH, _safe, address(765), 1, 0, block.timestamp + 500));
+
+        messageDigest = keccak256(abi.encodePacked(uint16(0x1901), _DOMAIN_SEPARATOR, PERMIT));
+        safeMessage = getSafe(address(multisig)).safe.getMessageHash(bytes.concat(messageDigest));
     }
 
     function dealCreateLockFxs(address account, uint256 amount) public {
@@ -321,6 +469,37 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
 
     function setupFraxGuard(address _safe, address signer, address _fraxGuard) public {
         bytes memory data = abi.encodeWithSignature("setGuard(address)", address(_fraxGuard));
+        DeployedSafe _dsafe = getSafe(_safe).safe;
+        bytes32 txHash = _dsafe.getTransactionHash(
+            address(_dsafe),
+            0,
+            data,
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            payable(address(0)),
+            payable(address(0)),
+            _dsafe.nonce()
+        );
+
+        hoax(signer);
+        _dsafe.execTransaction(
+            address(_dsafe),
+            0,
+            data,
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            payable(address(0)),
+            payable(address(0)),
+            generateEoaSigs(4, txHash)
+        );
+    }
+
+    function setupFraxFallbackHandler(address _safe, address signer, address _handler) public {
+        bytes memory data = abi.encodeWithSignature("setFallbackHandler(address)", address(_handler));
         DeployedSafe _dsafe = getSafe(_safe).safe;
         bytes32 txHash = _dsafe.getTransactionHash(
             address(_dsafe),
@@ -373,12 +552,12 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     function optimisticTxProposalHash(
         address _safe,
         IFraxGovernorOmega _fraxGovernorOmega,
-        bytes32 txHash
+        bytes memory txData
     ) public pure returns (uint256, address[] memory, uint256[] memory, bytes[] memory) {
-        bytes memory data = abi.encodeWithSelector(ISafe.approveHash.selector, txHash);
+        bytes memory data = abi.encodeCall(ISafe.approveHash, keccak256(txData));
 
         address[] memory targets = new address[](1);
-        targets[0] = _safe;
+        targets[0] = address(_safe);
         uint256[] memory values = new uint256[](1);
         values[0] = 0;
         bytes[] memory calldatas = new bytes[](1);
@@ -395,53 +574,51 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         address _safe,
         address to,
         uint256 nonce
-    ) public view returns (bytes32, IFraxGovernorOmega.TxHashArgs memory) {
-        return (
-            getSafe(_safe).safe.getTransactionHash(
-                to,
-                0,
-                "",
-                Enum.Operation.Call,
-                0,
-                0,
-                0,
-                address(0),
-                address(0),
-                nonce
-            ),
-            IFraxGovernorOmega.TxHashArgs(to, 0, "", Enum.Operation.Call, 0, 0, 0, address(0), address(0), nonce)
+    ) public view returns (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, bytes memory txData) {
+        txData = getSafe(_safe).safe.encodeTransactionData(
+            to,
+            0,
+            "",
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            address(0),
+            nonce
         );
+        txHash = keccak256(txData);
+        args = IFraxGovernorOmega.TxHashArgs(to, 0, "", Enum.Operation.Call, 0, 0, 0, address(0), address(0), nonce);
     }
 
     function createTransferFxsProposal(
         address _safe,
         uint256 nonce
-    ) public view returns (bytes32, IFraxGovernorOmega.TxHashArgs memory) {
-        return (
-            getSafe(_safe).safe.getTransactionHash(
-                address(fxs),
-                0,
-                abi.encodeWithSignature("transfer(address,uint256)", address(this), 100e18),
-                Enum.Operation.Call,
-                0,
-                0,
-                0,
-                address(0),
-                address(0),
-                nonce
-            ),
-            IFraxGovernorOmega.TxHashArgs(
-                address(fxs),
-                0,
-                abi.encodeWithSignature("transfer(address,uint256)", address(this), 100e18),
-                Enum.Operation.Call,
-                0,
-                0,
-                0,
-                address(0),
-                address(0),
-                nonce
-            )
+    ) public view returns (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, bytes memory txData) {
+        txData = getSafe(_safe).safe.encodeTransactionData(
+            address(fxs),
+            0,
+            abi.encodeWithSignature("transfer(address,uint256)", address(this), 100e18),
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            address(0),
+            nonce
+        );
+        txHash = keccak256(txData);
+        args = IFraxGovernorOmega.TxHashArgs(
+            address(fxs),
+            0,
+            abi.encodeWithSignature("transfer(address,uint256)", address(this), 100e18),
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            address(0),
+            nonce
         );
     }
 
@@ -451,9 +628,13 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         address caller,
         uint256 nonce
     ) public returns (uint256 pid, address[] memory targets, uint256[] memory values, bytes[] memory calldatas) {
-        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args) = createNoOpProposal(_safe, address(0), nonce);
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, bytes memory txData) = createNoOpProposal(
+            _safe,
+            address(0),
+            nonce
+        );
 
-        (pid, targets, values, calldatas) = optimisticTxProposalHash(_safe, _fraxGovernorOmega, txHash);
+        (pid, targets, values, calldatas) = optimisticTxProposalHash(_safe, _fraxGovernorOmega, txData);
 
         uint256 delay = _fraxGovernorOmega.votingDelay();
         uint256 period = _fraxGovernorOmega.votingPeriod();
@@ -482,9 +663,12 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         address caller,
         uint256 nonce
     ) public returns (uint256 pid, address[] memory targets, uint256[] memory values, bytes[] memory calldatas) {
-        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args) = createTransferFxsProposal(_safe, nonce);
+        (bytes32 txHash, IFraxGovernorOmega.TxHashArgs memory args, bytes memory txData) = createTransferFxsProposal(
+            _safe,
+            nonce
+        );
 
-        (pid, targets, values, calldatas) = optimisticTxProposalHash(_safe, _fraxGovernorOmega, txHash);
+        (pid, targets, values, calldatas) = optimisticTxProposalHash(_safe, _fraxGovernorOmega, txData);
 
         uint256 delay = _fraxGovernorOmega.votingDelay();
         uint256 period = _fraxGovernorOmega.$safeVotingPeriod(_safe) != 0
@@ -515,7 +699,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
         bytes memory data,
         Enum.Operation operation
     ) public pure returns (bytes memory) {
-        return abi.encodeWithSelector(ModuleManager.execTransactionFromModule.selector, to, value, data, operation);
+        return abi.encodeCall(ModuleManager.execTransactionFromModule, (to, value, data, operation));
     }
 
     function swapOwnerProposalHash(
@@ -594,6 +778,7 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     // Events
 
     event TransactionProposed(address indexed safe, uint256 nonce, bytes32 indexed txHash, uint256 indexed proposalId);
+    event SignMsg(bytes32 indexed msgHash);
 
     event VotingDelaySet(uint256 oldVotingDelay, uint256 newVotingDelay);
     event VotingDelayBlocksSet(uint256 oldVotingDelayBlocks, uint256 newVotingDelayBlocks);
@@ -607,8 +792,10 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
     event LateQuorumVoteExtensionSet(uint64 oldVoteExtension, uint64 newVoteExtension);
     event SafeVotingPeriodSet(address safe, uint256 oldSafeVotingPeriod, uint256 newSafeVotingPeriod);
 
-    event AddSafeToAllowlist(address indexed safe);
-    event RemoveSafeFromAllowlist(address indexed safe);
+    event AddToSafeAllowlist(address indexed safe);
+    event RemoveFromSafeAllowlist(address indexed safe);
+    event AddToDelegateCallAllowlist(address contractAddress);
+    event RemoveFromDelegateCallAllowlist(address contractAddress);
 
     event ProposalCreated(
         uint256 proposalId,
