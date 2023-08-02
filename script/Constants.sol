@@ -8,7 +8,6 @@ library Constants {
     address internal constant VE_FXS = 0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0;
     address internal constant SIGN_MESSAGE_LIB = 0xA65387F16B013cf2Af4605Ad8aA5ec25a2cbA3a2;
     address internal constant MULTI_SEND_CALL_ONLY = 0x40A2aCCbd92BCA938b02010E17A5b8929b49130D;
-    address internal constant FRAXLEND_AMO_SAFE = 0x168200cF227D4543302686124ac28aE0eaf2cA0B;
     address internal constant VE_FXS_VOTING_DELEGATION = 0x6B83c4f3a6729Fb7D5e19b720092162DF439f567;
     address internal constant FRAX_COMPATIBILITY_FALLBACK_HANDLER = 0x3FeFB779d737aCEa272686eA6E174ebF4273F973;
     address internal constant FRAX_GOVERNOR_ALPHA = 0xe8Ab863E629a05c73D6a23b99d37027E3763156e;
