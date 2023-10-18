@@ -43,47 +43,43 @@ This flow exists to stop a gnosis transaction that is deemed wrong or no longer 
 6. If the original transaction was already put into FraxGovernorOmega with `addNewTransaction()`, the underlying proposal will be marked `ProposalState.Canceled` so no one else can vote on it.
 
 ## Tests
-`npm install`
-
-To run tests you need to create a virtual env and install vyper 0.2.12. This is because we're using VyperDeployer,
+1. `cp .env.example .env` and fill out needed variables.  For basic tests, only `ETH_RPC_URL` is required.
+2. `npm install`
+3.  To run tests you need to create a virtual env and install vyper 0.2.12. This is because we're using VyperDeployer,
 which will deploy the actual veFXS.vy contract.
 
 Steps:
 ```bash
-virtualenv -p python --no-site-packages ~/vyper-venv # or python3 -m venv ~/vyper-venv
-source ~/vyper-venv/bin/activate
-cd ~/vyper-venv
+virtualenv -p python --no-site-packages ./venv # or python3 -m venv ./venv
+source ./venv/bin/activate
 pip install vyper==0.2.12
-cd $PROJECT_DIR
 forge test
 ```
 
 ### Coverage
-`forge coverage --report lcov && genhtml lcov.info -o report --branch-coverage && open report/index.html`
+```bash
+sudo apt install lcov
+forge coverage --report lcov && genhtml lcov.info -o report --branch-coverage && open report/index.html
+```
 
 ## Deploy:
-Make sure to update Constants.sol.
+Update Constants.sol as needed.
 
 ### Local Deploy:
+1. Set `PK` in `.env` to 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 (note: this is a default anvil private key so no funds are at risk)
+2. Start foundry anvil in terminal
+```
+anvil
+```
+3. Open up a new terminal while anvil is running
  ```bash
 forge script script/test/DeployTestFxs.s.sol:DeployTestFxs --fork-url http://localhost:8545 --broadcast
 forge script script/test/DeployTestnet.s.sol:DeployTestnet --fork-url http://localhost:8545 --broadcast
  ```
 
-### Arbitrum Deploy (test):
+### Arbitrum Deploy
+1. Set `PK` in `.env` to a private key corresponding to an EOA which contains enough ETH on Arbitrum to deploy.  Also, set `ARBI_RPC_URL`, `ARBISCAN_KEY`, and `ARBISCAN_API_URL`.
 ```bash
 forge script script/test/DeployTestFxs.s.sol:DeployTestFxs --rpc-url $ARBI_RPC_URL -vvvvv --verify --etherscan-api-key $ARBISCAN_KEY --verifier-url $ARBISCAN_API_URL
 forge script script/test/DeployTestnet.s.sol:DeployTestnet --rpc-url $ARBI_RPC_URL -vvvvv --verify --etherscan-api-key $ARBISCAN_KEY --verifier-url $ARBISCAN_API_URL
-```
-
-### Deploying MockVeFxs on Arbitrum:
-1. Go to Remix
-2. Install Vyper Remix plugin
-3. Bump `veFXS.py` version to 0.2.16
-4. Deploy through remix
-5. Verify on arbiscan, Remix will give you the abi encoded parameters
-
-### Contract Verification
-```bash
-forge verify-contract $CONTRACT_ADDRESS src/VeFxsVotingDelegation.sol:VeFxsVotingDelegation --verifier-url $ARBISCAN_API_URL --etherscan-api-key $ARBISCAN_KEY --chain 42161 --constructor-args $CONSTRUCTOR_ARGS --show-standard-json-input
 ```

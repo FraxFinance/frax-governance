@@ -1,3 +1,6 @@
+# Virtual environment needed for Vyper
+venv/
+
 # Compiler files
 cache/
 out/

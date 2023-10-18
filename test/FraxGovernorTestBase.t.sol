@@ -29,7 +29,7 @@ import { deployVeFxsVotingDelegation } from "script/DeployVeFxsVotingDelegation.
 import { deployFraxGovernorAlpha, deployTimelockController } from "script/DeployFraxGovernorAlphaAndTimelock.s.sol";
 import { deployFraxGovernorOmega } from "script/DeployFraxGovernorOmega.s.sol";
 import { deployFraxCompatibilityFallbackHandler } from "script/DeployFraxCompatibilityFallbackHandler.s.sol";
-import { deployMockFxs, deployVeFxs } from "../script/test/DeployTestFxs.s.sol";
+import { deployFxsMock, deployVeFxs } from "../script/test/DeployTestFxs.s.sol";
 import { Constants } from "../script/Constants.sol";
 import { FraxCompatibilityFallbackHandler } from "../src/FraxCompatibilityFallbackHandler.sol";
 
@@ -348,12 +348,12 @@ contract FraxGovernorTestBase is FraxTest, SafeTestTools {
 
         _setupGnosisSafe();
 
-        (address _mockFxs, , ) = deployMockFxs();
-        fxs = ERC20(_mockFxs);
+        (address _fxsMock, , ) = deployFxsMock();
+        fxs = ERC20(_fxsMock);
         deal(address(fxs), Constants.FRAX_TREASURY_2, 3_000_000e18);
 
-        (address _mockVeFxs, , ) = deployVeFxs(vyperDeployer, _mockFxs);
-        veFxs = IVeFxs(_mockVeFxs);
+        (address _veFxsMock, , ) = deployVeFxs(vyperDeployer, _fxsMock);
+        veFxs = IVeFxs(_veFxsMock);
 
         _setupDeployAndConfigure();
         _setupDealAndLockFxs();

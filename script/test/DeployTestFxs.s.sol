@@ -8,8 +8,8 @@ import "test/mock/FxsMock.sol";
 import "src/interfaces/IVeFxs.sol";
 import "test/utils/VyperDeployer.sol";
 
-function deployMockFxs() returns (address _address, bytes memory _constructorParams, string memory _contractName) {
-    _contractName = "MockFxs";
+function deployFxsMock() returns (address _address, bytes memory _constructorParams, string memory _contractName) {
+    _contractName = "FxsMock";
     string memory _symbol = "FXSM";
     _constructorParams = abi.encode(_contractName, _symbol);
     _address = address(new FxsMock(_contractName, _symbol));
@@ -18,10 +18,10 @@ function deployMockFxs() returns (address _address, bytes memory _constructorPar
 // Deploy through remix for testnet deploys. See README.
 function deployVeFxs(
     VyperDeployer vyperDeployer,
-    address _mockFxs
+    address _fxsMock
 ) returns (address _address, bytes memory _constructorParams, string memory _contractName) {
-    _contractName = "veFxs";
-    _constructorParams = abi.encode(_mockFxs, _contractName, "1");
+    _contractName = "veFXS";
+    _constructorParams = abi.encode(_fxsMock, _contractName, "1");
     _address = address(vyperDeployer.deployContract(_contractName, _constructorParams));
 }
 
@@ -31,6 +31,6 @@ contract DeployTestFxs is BaseScript {
         broadcaster
         returns (address _address, bytes memory _constructorParams, string memory _contractName)
     {
-        (_address, _constructorParams, _contractName) = deployMockFxs();
+        (_address, _constructorParams, _contractName) = deployFxsMock();
     }
 }
